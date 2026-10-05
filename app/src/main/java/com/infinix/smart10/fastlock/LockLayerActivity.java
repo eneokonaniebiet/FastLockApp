@@ -59,8 +59,8 @@ public class LockLayerActivity extends Activity {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 float dy = event.getRawY() - downY;
                 if (dy < -120f) {
-                    // Only FastLock closes. Android Keyguard stays independent underneath.
-                    finish();
+                    // Swipe up opens FastLock's own authentication page.
+                    openAuth();
                     return true;
                 }
             }
