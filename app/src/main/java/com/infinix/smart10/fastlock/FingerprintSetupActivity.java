@@ -33,5 +33,4 @@ public class FingerprintSetupActivity extends Activity {
         public boolean onTouchEvent(MotionEvent e){if(e.getAction()==MotionEvent.ACTION_DOWN||e.getAction()==MotionEvent.ACTION_MOVE){points.add(new PointF(e.getX(),e.getY()));invalidate();return true;}return true;}
         public void clear(){points.clear();invalidate();}
         public String signature(){boolean[] cells=new boolean[16*24];float w=getWidth(),h=getHeight();for(PointF q:points){int gx=Math.max(0,Math.min(15,(int)(q.x/w*16))),gy=Math.max(0,Math.min(23,(int)(q.y/h*24)));cells[gy*16+gx]=true;}int count=0;for(boolean v:cells)if(v)count++;if(count<5)return "";byte[] out=new byte[48];for(int i=0;i<cells.length;i++)if(cells[i])out[i/8]|=(byte)(1<<(i%8));return android.util.Base64.encodeToString(out,android.util.Base64.NO_WRAP);}}
-    }
 }
