@@ -15,15 +15,16 @@ public class ScreenReceiver extends BroadcastReceiver {
         if (action == null) return;
 
         if (Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)) {
-            // Direct-Boot phase: keep the fact that FastLock was active in
-            // device-protected storage and require the FastLock PIN after
-            // Android's own device credential has been cleared.
+            // Direct-Boot storage is available before the user unlocks Android.
+            // Record that the first FastLock authentication after reboot must
+            // use the FastLock PIN.
             Context dp = context.createDeviceProtectedStorageContext();
             boolean active = dp.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                     .getBoolean("active", false);
             if (active) {
                 dp.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                         .putBoolean("fastlock_require_pin_after_boot", true)
+                        .putBoolean("fastlock_authenticated", false)
                         .apply();
             }
             return;
@@ -36,8 +37,12 @@ public class ScreenReceiver extends BroadcastReceiver {
                     .getBoolean("active", false);
 
             if (active) {
+                boolean requirePin = dp.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                        .getBoolean("fastlock_require_pin_after_boot", false);
+
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                         .putBoolean("fastlock_authenticated", false)
+                        .putBoolean("fastlock_require_pin_after_boot", requirePin)
                         .apply();
 
                 Intent service = new Intent(context, FastOverlayService.class);
