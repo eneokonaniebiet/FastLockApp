@@ -3,13 +3,10 @@ package com.infinix.smart10.fastlock;
 import android.app.Activity;
 import android.os.Bundle;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
 import android.view.*;
 import android.widget.*;
 import android.content.Intent;
-import android.net.Uri;
-import java.io.InputStream;
 
 public class LockLayerActivity extends Activity {
     private float downY;
@@ -21,95 +18,105 @@ public class LockLayerActivity extends Activity {
             setTurnScreenOn(true);
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
+                WindowManager.LayoutParams.FLAG_FULLSCREEN |
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        android.content.SharedPreferences prefs = getSharedPreferences("fastlock", MODE_PRIVATE);
-        FrameLayout root = new FrameLayout(this);
-
-        // Mirror the device's current Android wallpaper automatically.
-        // FastLock does not replace or modify the system wallpaper.
+        FrameLayout root=new FrameLayout(this);
+        root.setBackgroundColor(0xFF080A0F);
         try {
-            android.app.WallpaperManager wm = android.app.WallpaperManager.getInstance(this);
-            Drawable currentWallpaper = wm.getDrawable();
-            if (currentWallpaper != null) {
-                root.setBackground(currentWallpaper);
-            } else {
-                root.setBackgroundColor(Color.TRANSPARENT);
-            }
-        } catch (Exception e) {
-            root.setBackgroundColor(Color.TRANSPARENT);
-        }
+            Drawable wallpaper=android.app.WallpaperManager.getInstance(this).getDrawable();
+            if(wallpaper!=null) root.setBackground(wallpaper);
+        } catch(Exception ignored) {}
 
-        TextView hint = new TextView(this);
-        hint.setText("FastLock\nSwipe up to unlock");
-        hint.setTextColor(0xDDFFFFFF);
-        hint.setTextSize(12);
-        hint.setGravity(Gravity.CENTER);
+        View scrim=new View(this);
+        scrim.setBackgroundColor(0x88000000);
+        root.addView(scrim,new FrameLayout.LayoutParams(-1,-1));
 
-        ImageView fingerprint = new ImageView(this);
+        LinearLayout center=new LinearLayout(this);
+        center.setOrientation(LinearLayout.VERTICAL);
+        center.setGravity(Gravity.CENTER);
+        center.setPadding(28,28,28,28);
+
+        TextView title=new TextView(this);
+        title.setText("FastLock");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(20);
+        title.setGravity(Gravity.CENTER);
+        center.addView(title);
+
+        TextView instruction=new TextView(this);
+        instruction.setText("\nTouch the fingerprint area to unlock\n\nSwipe up for PIN");
+        instruction.setTextColor(0xE6FFFFFF);
+        instruction.setTextSize(14);
+        instruction.setGravity(Gravity.CENTER);
+        center.addView(instruction);
+
+        ImageView fingerprint=new ImageView(this);
         fingerprint.setImageResource(R.drawable.ic_fastlock);
         fingerprint.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        fingerprint.setPadding(7,7,7,7);
-        fingerprint.setContentDescription("FastLock unlock");
+        fingerprint.setPadding(28,28,28,28);
+        fingerprint.setContentDescription("FastLock fingerprint unlock");
+        center.addView(fingerprint,new LinearLayout.LayoutParams(150,150));
 
-        GradientDrawable ring = new GradientDrawable();
-        ring.setColor(0xCC080A0F);
-        ring.setShape(GradientDrawable.OVAL);
-        ring.setStroke(1, 0xFFD8B35A);
-        fingerprint.setBackground(ring);
+        TextView swipe=new TextView(this);
+        swipe.setText("↑");
+        swipe.setTextColor(0xCCFFFFFF);
+        swipe.setTextSize(28);
+        swipe.setGravity(Gravity.CENTER);
+        center.addView(swipe);
 
-        fingerprint.setOnClickListener(v -> openAuth());
+        FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER);
+        root.addView(center,cp);
 
-        View.OnTouchListener swipe = (v,event) -> {
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                downY = event.getRawY();
-                return true;
-            }
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (event.getRawY() - downY < -100f) openAuth();
-                return true;
-            }
-            return true;
-        };
-        root.setOnTouchListener(swipe);
-
-        fingerprint.setOnTouchListener((v,event) -> {
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                downY = event.getRawY();
-                return true;
-            }
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (event.getRawY() - downY < -80f) openAuth();
-                else v.performClick();
-                return true;
+        root.setOnTouchListener(this::handleSwipe);
+        fingerprint.setOnTouchListener((v,e)->{
+            if(e.getActionMasked()==MotionEvent.ACTION_UP){
+                v.performClick();
+                openFingerprintVerification();
             }
             return true;
         });
 
-        FrameLayout.LayoutParams fp = new FrameLayout.LayoutParams(
-                54,54,Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        fp.bottomMargin = 62;
-
-        FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(
-                -2,-2,Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        hp.bottomMargin = 128;
-
-        root.addView(hint,hp);
-        root.addView(fingerprint,fp);
         setContentView(root);
     }
 
-    private void openAuth() {
-        Intent intent = new Intent(this, AuthActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
-        startActivity(intent);
+    private boolean handleSwipe(View v,MotionEvent e){
+        if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
+            downY=e.getRawY();
+            return true;
+        }
+        if(e.getActionMasked()==MotionEvent.ACTION_UP){
+            if(e.getRawY()-downY < -90f) openPin();
+            return true;
+        }
+        return true;
     }
 
-    @Override protected void onResume() {
+    private void openFingerprintVerification(){
+        Intent i=new Intent(this,FingerprintSetupActivity.class);
+        i.putExtra("verify",true);
+        startActivityForResult(i,77);
+    }
+
+    private void openPin(){
+        Intent i=new Intent(this,AuthActivity.class);
+        i.putExtra("pin_only",true);
+        startActivityForResult(i,78);
+    }
+
+    @Override protected void onActivityResult(int r,int c,Intent d){
+        super.onActivityResult(r,c,d);
+        if((r==77||r==78)&&c==RESULT_OK){
+            getSharedPreferences("fastlock",MODE_PRIVATE).edit().putBoolean("fastlock_authenticated",true).apply();
+            finish();
+        }
+    }
+
+    @Override protected void onResume(){
         super.onResume();
-        android.content.SharedPreferences prefs = getSharedPreferences("fastlock", MODE_PRIVATE);
-        if (prefs.getBoolean("fastlock_authenticated", false)) {
-            prefs.edit().putBoolean("fastlock_authenticated", false).apply();
+        if(getSharedPreferences("fastlock",MODE_PRIVATE).getBoolean("fastlock_authenticated",false)){
+            getSharedPreferences("fastlock",MODE_PRIVATE).edit().putBoolean("fastlock_authenticated",false).apply();
             finish();
         }
     }
