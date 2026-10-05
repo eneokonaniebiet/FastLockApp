@@ -8,6 +8,10 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.widget.*;
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
+import androidx.core.content.ContextCompat;
+import java.util.concurrent.Executor;
 
 public class MainActivity extends Activity {
     private static final int OVERLAY_REQ = 4101;
@@ -33,36 +37,32 @@ public class MainActivity extends Activity {
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView status = new TextView(this);
-        status.setText("\nApp-owned lock layer\n\n" +
-                "Passcode: " + (prefs.contains("passcode_hash") ? "Set" : "Not set") +
-                "\nFingerprint: " + (prefs.getBoolean("biometric_enabled", false) ? "Enabled" : "Not enabled") +
-                "\n\nYour phone's normal lock screen is untouched.");
+        status.setText("\nBottom app-owned lock layer\n\n" +
+                "FastLock passcode: " + (prefs.contains("passcode_hash") ? "Set" : "Not set") +
+                "\nAndroid biometric: " + (prefs.getBoolean("biometric_enabled", false) ? "Enabled" : "Not enabled") +
+                "\n\nThe separate FastLock passcode is created inside this app.\nAndroid biometric, if enabled, is verified by Android and is never copied or stored by FastLockApp.");
         status.setTextColor(0xFFB9BEC8);
         status.setTextSize(16);
         status.setGravity(Gravity.CENTER);
         root.addView(status, new LinearLayout.LayoutParams(-1, 0, 1));
 
         Button setup = new Button(this);
-        setup.setText("Set / change passcode");
+        setup.setText("Set / change FastLock passcode");
         setup.setOnClickListener(v -> showPasscodeDialog());
         root.addView(setup, new LinearLayout.LayoutParams(-1, -2));
 
         Button fingerprint = new Button(this);
         fingerprint.setText(prefs.getBoolean("biometric_enabled", false)
-                ? "Fingerprint enabled"
-                : "Enable fingerprint");
-        fingerprint.setOnClickListener(v -> {
-            prefs.edit().putBoolean("biometric_enabled", true).apply();
-            Toast.makeText(this, "Fingerprint authentication enabled for FastLockApp", Toast.LENGTH_SHORT).show();
-            buildUi();
-        });
+                ? "Android biometric enabled"
+                : "Enable Android biometric");
+        fingerprint.setOnClickListener(v -> enableAndroidBiometric());
         root.addView(fingerprint, new LinearLayout.LayoutParams(-1, -2));
 
         Button activate = new Button(this);
-        activate.setText(prefs.getBoolean("active", false) ? "Deactivate lock layer" : "Activate lock layer");
+        activate.setText(prefs.getBoolean("active", false) ? "Deactivate bottom lock layer" : "Activate bottom lock layer");
         activate.setOnClickListener(v -> {
             if (!prefs.contains("passcode_hash")) {
-                Toast.makeText(this, "Set your passcode first", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Set your FastLock passcode first", Toast.LENGTH_SHORT).show();
                 showPasscodeDialog();
                 return;
             }
@@ -84,7 +84,7 @@ public class MainActivity extends Activity {
         root.addView(activate, new LinearLayout.LayoutParams(-1, -2));
 
         TextView note = new TextView(this);
-        note.setText("\nFingerprint is verified by Android and used only to unlock this app layer.");
+        note.setText("\nIMPORTANT: Android does not allow apps to create a second fingerprint database. FastLockApp can use your phone's enrolled biometric only through Android's secure biometric prompt, or you can use your independent FastLock passcode.");
         note.setTextColor(0xFF777D88);
         note.setGravity(Gravity.CENTER);
         root.addView(note, new LinearLayout.LayoutParams(-1, -2));
@@ -92,15 +92,28 @@ public class MainActivity extends Activity {
         setContentView(root);
     }
 
+    private void enableAndroidBiometric() {
+        int result = BiometricManager.from(this).canAuthenticate(
+                BiometricManager.Authenticators.BIOMETRIC_STRONG |
+                BiometricManager.Authenticators.BIOMETRIC_WEAK);
+        if (result == BiometricManager.BIOMETRIC_SUCCESS) {
+            prefs.edit().putBoolean("biometric_enabled", true).apply();
+            Toast.makeText(this, "Android biometric enabled for FastLockApp", Toast.LENGTH_SHORT).show();
+            buildUi();
+        } else {
+            Toast.makeText(this, "No enrolled phone biometric is available. Add one in Android Settings first.", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void showPasscodeDialog() {
         final EditText input = new EditText(this);
-        input.setHint("4–12 digit passcode");
+        input.setHint("4–12 digit FastLock passcode");
         input.setInputType(2);
         input.setTextColor(0xFFFFFFFF);
         input.setHintTextColor(0xFF777D88);
         new AlertDialog.Builder(this)
-                .setTitle("FastLockApp passcode")
-                .setMessage("Create a passcode used only by the FastLockApp layer.")
+                .setTitle("Create FastLock passcode")
+                .setMessage("This is FastLockApp's own credential. It is separate from your phone lock.")
                 .setView(input)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Save", (d, w) -> {
@@ -114,7 +127,7 @@ public class MainActivity extends Activity {
                     e.putString("passcode_salt", salt);
                     e.putString("passcode_hash", hash(value, salt));
                     e.apply();
-                    Toast.makeText(this, "Passcode saved", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "FastLock passcode saved", Toast.LENGTH_SHORT).show();
                     buildUi();
                 }).show();
     }
