@@ -99,15 +99,15 @@ public class AuthActivity extends FragmentActivity {
                 new BiometricPrompt.AuthenticationCallback() {
                     @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
                         runOnUiThread(() -> { Toast.makeText(AuthActivity.this,
-                                "FastLockApp fingerprint verified", Toast.LENGTH_SHORT).show(); finish(); });
+                                "Phone biometric verified for FastLockApp", Toast.LENGTH_SHORT).show(); finish(); });
                     }
                     @Override public void onAuthenticationError(int code, CharSequence message) {
                         Toast.makeText(AuthActivity.this, "Fingerprint not verified", Toast.LENGTH_SHORT).show();
                     }
                 });
         BiometricPrompt.PromptInfo info = new BiometricPrompt.PromptInfo.Builder()
-                .setTitle("FastLockApp fingerprint")
-                .setSubtitle("Verify to unlock FastLockApp only")
+                .setTitle("Phone biometric")
+                .setSubtitle("Android will verify your enrolled fingerprint or biometric")
                 .setNegativeButtonText("Use passcode")
                 .setConfirmationRequired(false).build();
         prompt.authenticate(info);
