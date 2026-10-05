@@ -47,7 +47,7 @@ public class LockLayerActivity extends FragmentActivity {
         root.addView(fingerprint,sensorLp);
         setContentView(root);
 
-        startWakePulse();
+        boolean wakePulse = getSharedPreferences("fastlock",MODE_PRIVATE)\n                .getBoolean("fastlock_wake_pulse",false);\n        if(wakePulse){\n            getSharedPreferences("fastlock",MODE_PRIVATE).edit()\n                    .putBoolean("fastlock_wake_pulse",false).apply();\n            startWakePulse();\n        }
         try{
             android.media.ToneGenerator tone=new android.media.ToneGenerator(
                     android.media.AudioManager.STREAM_NOTIFICATION,70);
