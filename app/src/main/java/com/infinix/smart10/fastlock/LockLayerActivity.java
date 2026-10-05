@@ -55,7 +55,7 @@ public class LockLayerActivity extends FragmentActivity {
         bottom.addView(hint);
 
         fingerprint=new TouchUnlockView();
-        bottom.addView(fingerprint,new LinearLayout.LayoutParams(120,120));
+        bottom.addView(fingerprint,new LinearLayout.LayoutParams(170,170));
         root.addView(bottom,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL));
 
         // Do not put a touch listener on the full root. That could steal the
