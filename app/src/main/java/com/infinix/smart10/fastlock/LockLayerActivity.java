@@ -7,9 +7,15 @@ import android.graphics.drawable.Drawable;
 import android.view.*;
 import android.widget.*;
 import android.content.Intent;
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
+import androidx.core.content.ContextCompat;
+import androidx.fragment.app.FragmentActivity;
+import java.util.concurrent.Executor;
 
-public class LockLayerActivity extends Activity {
+public class LockLayerActivity extends FragmentActivity {
     private float downY;
+    private ImageView fingerprint;
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -17,107 +23,127 @@ public class LockLayerActivity extends Activity {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
         }
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+
+        getWindow().addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
                 WindowManager.LayoutParams.FLAG_FULLSCREEN |
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        FrameLayout root=new FrameLayout(this);
-        root.setBackgroundColor(0xFF080A0F);
+        FrameLayout root = new FrameLayout(this);
         try {
-            Drawable wallpaper=android.app.WallpaperManager.getInstance(this).getDrawable();
-            if(wallpaper!=null) root.setBackground(wallpaper);
-        } catch(Exception ignored) {}
+            Drawable wallpaper = android.app.WallpaperManager.getInstance(this).getDrawable();
+            if (wallpaper != null) root.setBackground(wallpaper);
+            else root.setBackgroundColor(0xFF080A0F);
+        } catch (Exception ignored) {
+            root.setBackgroundColor(0xFF080A0F);
+        }
 
-        View scrim=new View(this);
-        scrim.setBackgroundColor(0x88000000);
-        root.addView(scrim,new FrameLayout.LayoutParams(-1,-1));
+        View scrim = new View(this);
+        scrim.setBackgroundColor(0x33000000);
+        root.addView(scrim, new FrameLayout.LayoutParams(-1, -1));
 
-        LinearLayout center=new LinearLayout(this);
-        center.setOrientation(LinearLayout.VERTICAL);
-        center.setGravity(Gravity.CENTER);
-        center.setPadding(28,28,28,28);
+        LinearLayout bottom = new LinearLayout(this);
+        bottom.setOrientation(LinearLayout.VERTICAL);
+        bottom.setGravity(Gravity.CENTER_HORIZONTAL);
+        bottom.setPadding(28, 16, 28, 42);
 
-        TextView title=new TextView(this);
+        TextView title = new TextView(this);
         title.setText("FastLock");
         title.setTextColor(Color.WHITE);
         title.setTextSize(20);
         title.setGravity(Gravity.CENTER);
-        center.addView(title);
+        bottom.addView(title);
 
-        TextView instruction=new TextView(this);
-        instruction.setText("\nTouch the fingerprint area to unlock\n\nSwipe up for PIN");
-        instruction.setTextColor(0xE6FFFFFF);
-        instruction.setTextSize(14);
-        instruction.setGravity(Gravity.CENTER);
-        center.addView(instruction);
+        TextView hint = new TextView(this);
+        hint.setText("\nTouch fingerprint to unlock\nSwipe up for FastLock PIN");
+        hint.setTextColor(0xEEFFFFFF);
+        hint.setTextSize(14);
+        hint.setGravity(Gravity.CENTER);
+        bottom.addView(hint);
 
-        ImageView fingerprint=new ImageView(this);
+        fingerprint = new ImageView(this);
         fingerprint.setImageResource(R.drawable.ic_fastlock);
         fingerprint.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        fingerprint.setPadding(28,28,28,28);
-        fingerprint.setContentDescription("FastLock fingerprint unlock");
-        center.addView(fingerprint,new LinearLayout.LayoutParams(150,150));
+        fingerprint.setPadding(24, 24, 24, 24);
+        fingerprint.setContentDescription("FastLock fingerprint authentication");
+        bottom.addView(fingerprint, new LinearLayout.LayoutParams(118, 118));
 
-        TextView swipe=new TextView(this);
-        swipe.setText("↑");
-        swipe.setTextColor(0xCCFFFFFF);
-        swipe.setTextSize(28);
-        swipe.setGravity(Gravity.CENTER);
-        center.addView(swipe);
-
-        FrameLayout.LayoutParams cp=new FrameLayout.LayoutParams(-1,-2,Gravity.CENTER);
-        root.addView(center,cp);
+        FrameLayout.LayoutParams bp =
+                new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        root.addView(bottom, bp);
 
         root.setOnTouchListener(this::handleSwipe);
-        fingerprint.setOnTouchListener((v,e)->{
-            if(e.getActionMasked()==MotionEvent.ACTION_UP){
-                v.performClick();
-                openFingerprintVerification();
-            }
-            return true;
-        });
+        fingerprint.setOnClickListener(v -> authenticateFingerprint());
 
         setContentView(root);
     }
 
-    private boolean handleSwipe(View v,MotionEvent e){
-        if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
-            downY=e.getRawY();
+    private boolean handleSwipe(View v, MotionEvent e) {
+        if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            downY = e.getRawY();
             return true;
         }
-        if(e.getActionMasked()==MotionEvent.ACTION_UP){
-            if(e.getRawY()-downY < -90f) openPin();
+        if (e.getActionMasked() == MotionEvent.ACTION_UP) {
+            if (e.getRawY() - downY < -90f) openPin();
             return true;
         }
         return true;
     }
 
-    private void openFingerprintVerification(){
-        Intent i=new Intent(this,FingerprintSetupActivity.class);
-        i.putExtra("verify",true);
-        startActivityForResult(i,77);
-    }
-
-    private void openPin(){
-        Intent i=new Intent(this,AuthActivity.class);
-        i.putExtra("pin_only",true);
-        startActivityForResult(i,78);
-    }
-
-    @Override protected void onActivityResult(int r,int c,Intent d){
-        super.onActivityResult(r,c,d);
-        if((r==77||r==78)&&c==RESULT_OK){
-            getSharedPreferences("fastlock",MODE_PRIVATE).edit().putBoolean("fastlock_authenticated",true).apply();
-            finish();
+    private void authenticateFingerprint() {
+        if (!getSharedPreferences("fastlock", MODE_PRIVATE)
+                .getBoolean("biometric_enabled", false)) {
+            openPin();
+            return;
         }
+
+        BiometricManager manager = BiometricManager.from(this);
+        if (manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                != BiometricManager.BIOMETRIC_SUCCESS) {
+            Toast.makeText(this, "FastLock fingerprint is unavailable", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Executor executor = ContextCompat.getMainExecutor(this);
+        BiometricPrompt prompt = new BiometricPrompt(this, executor,
+                new BiometricPrompt.AuthenticationCallback() {
+                    @Override public void onAuthenticationSucceeded(
+                            BiometricPrompt.AuthenticationResult result) {
+                        completeUnlock();
+                    }
+
+                    @Override public void onAuthenticationError(int code, CharSequence msg) {
+                        if (code == BiometricPrompt.ERROR_NEGATIVE_BUTTON) openPin();
+                    }
+                });
+
+        BiometricPrompt.PromptInfo info = new BiometricPrompt.PromptInfo.Builder()
+                .setTitle("FastLock")
+                .setSubtitle("Unlock FastLock layer with your fingerprint")
+                .setNegativeButtonText("Use FastLock PIN")
+                .setConfirmationRequired(false)
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .build();
+
+        prompt.authenticate(info);
     }
 
-    @Override protected void onResume(){
-        super.onResume();
-        if(getSharedPreferences("fastlock",MODE_PRIVATE).getBoolean("fastlock_authenticated",false)){
-            getSharedPreferences("fastlock",MODE_PRIVATE).edit().putBoolean("fastlock_authenticated",false).apply();
-            finish();
-        }
+    private void openPin() {
+        Intent i = new Intent(this, AuthActivity.class);
+        i.putExtra("pin_only", true);
+        startActivityForResult(i, 78);
+    }
+
+    private void completeUnlock() {
+        getSharedPreferences("fastlock", MODE_PRIVATE)
+                .edit().putBoolean("fastlock_authenticated", true).apply();
+        setResult(RESULT_OK);
+        finish();
+    }
+
+    @Override protected void onActivityResult(int r, int c, Intent d) {
+        super.onActivityResult(r, c, d);
+        if (r == 78 && c == RESULT_OK) completeUnlock();
     }
 }
