@@ -129,29 +129,7 @@ public class FastOverlayService extends Service {
     }
 
     private void showIcon() {
-        return;
-        TextView icon=new TextView(this);
-        icon.setText("⌾");
-        icon.setTextColor(Color.WHITE);
-        icon.setTextSize(27);
-        icon.setGravity(Gravity.CENTER);
-
-        GradientDrawable bg=new GradientDrawable();
-        bg.setColor(0xEE171A21);
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setStroke(2,0xFFD8B35A);
-        icon.setBackground(bg);
-        icon.setOnClickListener(v -> {
-            removeIcon();
-            showLockLayer();
-        });
-
-        iconView=icon;
-        try {
-            wm.addView(iconView,lp(76,76));
-        } catch(Exception e) {
-            iconView=null;
-        }
+        // Fallback floating icon intentionally disabled; the lock layer is the only gate.
     }
 
     private void removeIcon() {
