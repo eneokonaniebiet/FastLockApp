@@ -12,7 +12,15 @@ public class MainActivity extends Activity {
     private static final int OVERLAY_REQ=4101;
     private android.content.SharedPreferences prefs;
 
-    @Override public void onCreate(Bundle s){super.onCreate(s);prefs=getSharedPreferences("fastlock",MODE_PRIVATE);buildUi();}
+    @Override public void onCreate(Bundle s){super.onCreate(s);prefs=getSharedPreferences("fastlock",MODE_PRIVATE);migrateOldTouchCredential();buildUi();}
+
+    private void migrateOldTouchCredential(){
+        String saved=prefs.getString("fast_fingerprint_signatures","");
+        if(!saved.isEmpty() && !saved.trim().startsWith("v2;")){
+            prefs.edit().remove("fast_fingerprint_signatures").putBoolean("fast_fingerprint_enabled",false).apply();
+            Toast.makeText(this,"FastLock fingerprint updated. Please enroll it again.",Toast.LENGTH_LONG).show();
+        }
+    }
 
     private void buildUi(){
         LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(36,48,36,32); root.setBackgroundColor(0xFF080A0F);
