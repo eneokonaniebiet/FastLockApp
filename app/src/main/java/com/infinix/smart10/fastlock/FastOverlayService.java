@@ -93,7 +93,6 @@ public class FastOverlayService extends Service {
                 if (getSharedPreferences("fastlock",MODE_PRIVATE)
                         .getBoolean("active",false)) {
                     showLockLayer();
-                    if (attempt==7) showIcon();
                 }
             },120L + n*450L);
         }
@@ -109,8 +108,8 @@ public class FastOverlayService extends Service {
                     Intent.FLAG_ACTIVITY_CLEAR_TOP |
                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
             startActivity(i);
-        } catch (Exception e) {
-            showIcon();
+        } catch (Exception ignored) {
+            // The activity guard will retry while FastLock remains active.
         }
     }
 
@@ -130,7 +129,7 @@ public class FastOverlayService extends Service {
     }
 
     private void showIcon() {
-        if (!Settings.canDrawOverlays(this) || iconView!=null) return;
+        return;
         TextView icon=new TextView(this);
         icon.setText("⌾");
         icon.setTextColor(Color.WHITE);
