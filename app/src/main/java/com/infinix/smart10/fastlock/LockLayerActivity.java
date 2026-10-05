@@ -6,6 +6,8 @@ import android.graphics.*;
 import android.view.*;
 import android.widget.*;
 import android.content.Intent;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
 import androidx.fragment.app.FragmentActivity;
 
 public class LockLayerActivity extends FragmentActivity {
