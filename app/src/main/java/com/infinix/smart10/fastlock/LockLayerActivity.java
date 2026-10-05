@@ -38,7 +38,7 @@ public class LockLayerActivity extends FragmentActivity {
         LinearLayout bottom=new LinearLayout(this);
         bottom.setOrientation(LinearLayout.VERTICAL);
         bottom.setGravity(Gravity.CENTER_HORIZONTAL);
-        bottom.setPadding(28,16,28,42);
+        bottom.setPadding(28,16,28,78);
 
         TextView title=new TextView(this);
         title.setText("FastLock");
@@ -55,7 +55,7 @@ public class LockLayerActivity extends FragmentActivity {
         bottom.addView(hint);
 
         fingerprint=new TouchUnlockView();
-        bottom.addView(fingerprint,new LinearLayout.LayoutParams(170,170));
+        bottom.addView(fingerprint,new LinearLayout.LayoutParams(210,210));
         root.addView(bottom,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL));
 
         // Do not put a touch listener on the full root. That could steal the
@@ -213,11 +213,11 @@ public class LockLayerActivity extends FragmentActivity {
                 session.add(e);
                 long held=System.currentTimeMillis()-start;
 
-                if(held<900){
+                if(held<120){
                     active=false;
                     invalidate();
                     Toast.makeText(LockLayerActivity.this,
-                            "Hold until the circle completes.",Toast.LENGTH_SHORT).show();
+                            "Touch the FastLock sensor.",Toast.LENGTH_SHORT).show();
                     return true;
                 }
 
