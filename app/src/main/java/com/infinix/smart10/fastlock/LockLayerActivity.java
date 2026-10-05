@@ -47,6 +47,7 @@ public class LockLayerActivity extends FragmentActivity {
         root.addView(fingerprint,sensorLp);
         setContentView(root);
 
+    }
 
     private android.graphics.drawable.ColorDrawable color(int c){
         return new android.graphics.drawable.ColorDrawable(c);
