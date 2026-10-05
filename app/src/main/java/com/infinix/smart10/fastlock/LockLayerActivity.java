@@ -10,6 +10,8 @@ import androidx.fragment.app.FragmentActivity;
 
 public class LockLayerActivity extends FragmentActivity {
     private TouchUnlockView fingerprint;
+    private boolean authenticating = false;
+    private final android.os.Handler guardHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -53,7 +55,7 @@ public class LockLayerActivity extends FragmentActivity {
         bottom.addView(hint);
 
         fingerprint=new TouchUnlockView();
-        bottom.addView(fingerprint,new LinearLayout.LayoutParams(150,150));
+        bottom.addView(fingerprint,new LinearLayout.LayoutParams(120,120));
         root.addView(bottom,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL));
 
         // Do not put a touch listener on the full root. That could steal the
@@ -66,6 +68,7 @@ public class LockLayerActivity extends FragmentActivity {
     }
 
     private void openPin(){
+        authenticating = true;
         startActivityForResult(
                 new Intent(this,AuthActivity.class).putExtra("pin_only",true),78);
     }
@@ -73,13 +76,73 @@ public class LockLayerActivity extends FragmentActivity {
     private void completeUnlock(){
         getSharedPreferences("fastlock",MODE_PRIVATE).edit()
                 .putBoolean("fastlock_authenticated",true).apply();
+        authenticating = true;
+
+        // After successful FastLock authentication, show the normal app/launcher
+        // screen instead of returning to the exact screen that was underneath.
+        Intent home = new Intent(Intent.ACTION_MAIN);
+        home.addCategory(Intent.CATEGORY_HOME);
+        home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(home);
+
         setResult(RESULT_OK);
         finish();
     }
 
+    @Override public void onBackPressed(){
+        // Back must never dismiss/bypass the FastLock layer.
+        if(!authenticating) return;
+        super.onBackPressed();
+    }
+
+    @Override protected void onUserLeaveHint(){
+        super.onUserLeaveHint();
+        // Home/gesture navigation must not leave an unauthenticated FastLock
+        // session sitting behind the launcher. Bring the layer back.
+        if(!authenticating && getSharedPreferences("fastlock",MODE_PRIVATE)
+                .getBoolean("active",false)){
+            guardHandler.postDelayed(() -> {
+                if(!isFinishing() && !authenticating)
+                    bringLayerBack();
+            },120);
+        }
+    }
+
+    @Override protected void onPause(){
+        super.onPause();
+        if(!authenticating && getSharedPreferences("fastlock",MODE_PRIVATE)
+                .getBoolean("active",false)){
+            guardHandler.postDelayed(() -> {
+                if(!authenticating && getSharedPreferences("fastlock",MODE_PRIVATE)
+                        .getBoolean("active",false)){
+                    bringLayerBack();
+                }
+            },180);
+        }
+    }
+
+    private void bringLayerBack(){
+        try{
+            Intent i=new Intent(this,LockLayerActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP|
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP|
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            startActivity(i);
+        }catch(Exception ignored){}
+    }
+
+    @Override protected void onDestroy(){
+        guardHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
+    }
+
     @Override protected void onActivityResult(int r,int c,Intent d){
         super.onActivityResult(r,c,d);
-        if(r==78 && c==RESULT_OK) completeUnlock();
+        if(r==78){
+            if(c==RESULT_OK) completeUnlock();
+            else authenticating=false;
+        }
     }
 
     private class TouchUnlockView extends View {
