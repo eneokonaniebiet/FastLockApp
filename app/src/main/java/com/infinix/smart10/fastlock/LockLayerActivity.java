@@ -26,18 +26,19 @@ public class LockLayerActivity extends Activity {
         android.content.SharedPreferences prefs = getSharedPreferences("fastlock", MODE_PRIVATE);
         FrameLayout root = new FrameLayout(this);
 
-        String wallpaper = prefs.getString("wallpaper_uri", "");
-        if (!wallpaper.isEmpty()) {
-            try {
-                InputStream in = getContentResolver().openInputStream(Uri.parse(wallpaper));
-                Drawable d = Drawable.createFromStream(in, "fastlock_wallpaper");
-                if (in != null) in.close();
-                if (d != null) root.setBackground(d);
-                else root.setBackgroundColor(Color.TRANSPARENT);
-            } catch (Exception e) {
+        // Mirror the device's current Android wallpaper automatically.
+        // FastLock does not replace or modify the system wallpaper.
+        try {
+            android.app.WallpaperManager wm = android.app.WallpaperManager.getInstance(this);
+            Drawable currentWallpaper = wm.getDrawable();
+            if (currentWallpaper != null) {
+                root.setBackground(currentWallpaper);
+            } else {
                 root.setBackgroundColor(Color.TRANSPARENT);
             }
-        } else root.setBackgroundColor(Color.TRANSPARENT);
+        } catch (Exception e) {
+            root.setBackgroundColor(Color.TRANSPARENT);
+        }
 
         TextView hint = new TextView(this);
         hint.setText("FastLock\nSwipe up to unlock");
