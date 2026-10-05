@@ -37,6 +37,9 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
 
+      - name: Verify FastLock source commit
+        run: git rev-parse HEAD
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
