@@ -1,6 +1,7 @@
 package com.infinix.smart10.fastlock;
 
 import android.app.*;
+import android.app.admin.DevicePolicyManager;
 import android.content.*;
 import android.net.Uri;
 import android.os.Bundle;
@@ -38,6 +39,21 @@ public class MainActivity extends Activity {
                 "\n\nAuthentication is owned by FastLock. Android fingerprint enrollment is not used.");
         status.setTextColor(0xFFB9BEC8); status.setTextSize(16); status.setGravity(Gravity.CENTER); root.addView(status,new LinearLayout.LayoutParams(-1,0,1));
 
+        TextView lockTaskStatus=new TextView(this);
+        DevicePolicyManager dpm=(DevicePolicyManager)getSystemService(DEVICE_POLICY_SERVICE);
+        boolean deviceOwner=dpm!=null && dpm.isDeviceOwnerApp(getPackageName());
+        boolean adminActive=dpm!=null && dpm.isAdminActive(
+                new ComponentName(this,FastLockDeviceAdminReceiver.class));
+        lockTaskStatus.setText("\nAndroid Lock Task: "+(deviceOwner?"READY (Device Owner)":(adminActive?"ADMIN ENABLED — Device Owner still required":"NOT PROVISIONED"))+
+                "\nHome/Overview blocking uses Android Lock Task when FastLock is Device Owner.");
+        lockTaskStatus.setTextColor(0xFFB99A45); lockTaskStatus.setTextSize(14); lockTaskStatus.setGravity(Gravity.CENTER);
+        root.addView(lockTaskStatus,new LinearLayout.LayoutParams(-1,-2));
+
+        Button admin=new Button(this);
+        admin.setText(adminActive?"Android Device Admin enabled":"Enable Android Device Admin");
+        admin.setOnClickListener(v->enableAndroidAdmin());
+        root.addView(admin,new LinearLayout.LayoutParams(-1,-2));
+
         Button setup=new Button(this); setup.setText("Set / change FastLock PIN"); setup.setOnClickListener(v->showPasscodeDialog()); root.addView(setup,new LinearLayout.LayoutParams(-1,-2));
         Button finger=new Button(this); finger.setText(fingerCount()>0?"Manage FastLock Fingerprints":"Set up FastLock Fingerprint");
         finger.setOnClickListener(v->startActivity(new Intent(this,FingerprintSetupActivity.class))); root.addView(finger,new LinearLayout.LayoutParams(-1,-2));
@@ -58,6 +74,20 @@ public class MainActivity extends Activity {
         if(!prefs.getBoolean("fast_fingerprint_enabled",false)){Toast.makeText(this,"Set up at least one FastLock fingerprint first.",Toast.LENGTH_LONG).show();return;}
         if(!Settings.canDrawOverlays(this)){startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),OVERLAY_REQ);return;}
         prefs.edit().putBoolean("active",true).putBoolean("fastlock_authenticated",false).apply(); startLayer(); buildUi();
+    }
+
+    private void enableAndroidAdmin(){
+        DevicePolicyManager dpm=(DevicePolicyManager)getSystemService(DEVICE_POLICY_SERVICE);
+        ComponentName admin=new ComponentName(this,FastLockDeviceAdminReceiver.class);
+        if(dpm!=null && dpm.isAdminActive(admin)){
+            Toast.makeText(this,"FastLock Android admin is already enabled.",Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent i=new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
+        i.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN,admin);
+        i.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                "FastLock uses Android device policy for its optional Lock Task security mode.");
+        startActivityForResult(i,4301);
     }
 
     private void showPasscodeDialog(){
