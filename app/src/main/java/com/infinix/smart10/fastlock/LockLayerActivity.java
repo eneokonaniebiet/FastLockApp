@@ -21,8 +21,8 @@ public class LockLayerActivity extends Activity {
         }
 
         getWindow().addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-                        | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         );
 
         FrameLayout root = new FrameLayout(this);
@@ -51,7 +51,7 @@ public class LockLayerActivity extends Activity {
                 startActivity(new Intent(this, AuthActivity.class))
         );
 
-        View.OnTouchListener swipeListener = (v, event) -> {
+        View.OnTouchListener swipe = (v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 downY = event.getRawY();
                 return true;
@@ -59,7 +59,7 @@ public class LockLayerActivity extends Activity {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 float dy = event.getRawY() - downY;
                 if (dy < -120f) {
-                    // Hide only FastLock. Android's real Keyguard remains underneath.
+                    // Only FastLock closes. Android Keyguard stays independent underneath.
                     finish();
                     return true;
                 }
@@ -67,7 +67,8 @@ public class LockLayerActivity extends Activity {
             return false;
         };
 
-        root.setOnTouchListener(swipeListener);
+        root.setOnTouchListener(swipe);
+
         button.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 downY = event.getRawY();
@@ -85,23 +86,31 @@ public class LockLayerActivity extends Activity {
             return true;
         });
 
-        FrameLayout.LayoutParams buttonParams =
-                new FrameLayout.LayoutParams(
-                        76, 76,
-                        Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
-                );
-        buttonParams.bottomMargin = 28;
+        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(
+                76, 76, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        bp.bottomMargin = 28;
 
-        FrameLayout.LayoutParams hintParams =
-                new FrameLayout.LayoutParams(
-                        -2, -2,
-                        Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
-                );
-        hintParams.bottomMargin = 108;
+        FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(
+                -2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        hp.bottomMargin = 108;
 
-        root.addView(hint, hintParams);
-        root.addView(button, buttonParams);
-
+        root.addView(hint, hp);
+        root.addView(button, bp);
         setContentView(root);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+
+        android.content.SharedPreferences prefs =
+                getSharedPreferences("fastlock", MODE_PRIVATE);
+
+        // Successful FastLock authentication closes this layer completely.
+        // If Android is still locked, its own PIN/pattern/password screen remains.
+        // If Android is not locked, the normal phone screen is revealed.
+        if (prefs.getBoolean("fastlock_authenticated", false)) {
+            prefs.edit().putBoolean("fastlock_authenticated", false).apply();
+            finish();
+        }
     }
 }
