@@ -2,23 +2,18 @@ package com.infinix.smart10.fastlock;
 
 import android.app.*;
 import android.content.*;
-import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.os.*;
-import android.provider.Settings;
 import android.view.*;
-import android.widget.*;
 
 public class FastOverlayService extends Service {
-    private WindowManager wm;
-    private View iconView;
     private BroadcastReceiver screenReceiver;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean screenOn = true;
 
     @Override public void onCreate() {
         super.onCreate();
         startForeground(91, notification());
-        wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        screenOn = isDisplayOn();
         registerScreenReceiver();
     }
 
@@ -26,11 +21,11 @@ public class FastOverlayService extends Service {
         String channel = "fastlock";
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel c = new NotificationChannel(
-                    channel,"FastLockApp",NotificationManager.IMPORTANCE_LOW);
+                    channel, "FastLockApp", NotificationManager.IMPORTANCE_LOW);
             ((NotificationManager)getSystemService(NOTIFICATION_SERVICE))
                     .createNotificationChannel(c);
         }
-        return new Notification.Builder(this,channel)
+        return new Notification.Builder(this, channel)
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
                 .setContentTitle("FastLockApp active")
                 .setContentText("FastLock lock layer is active")
@@ -42,17 +37,16 @@ public class FastOverlayService extends Service {
         screenReceiver = new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent i) {
                 if (Intent.ACTION_SCREEN_OFF.equals(i.getAction())) {
-                    // Every new screen wake must require FastLock again.
-                    getSharedPreferences("fastlock",MODE_PRIVATE).edit()
-                            .putBoolean("fastlock_authenticated",false).apply();
-                    removeIcon();
+                    screenOn = false;
+                    handler.removeCallbacksAndMessages(null);
+                    getSharedPreferences("fastlock", MODE_PRIVATE).edit()
+                            .putBoolean("fastlock_authenticated", false).apply();
                 } else if (Intent.ACTION_SCREEN_ON.equals(i.getAction())
-                        && getSharedPreferences("fastlock",MODE_PRIVATE)
-                        .getBoolean("active",false)) {
-                    getSharedPreferences("fastlock",MODE_PRIVATE).edit()
-                            .putBoolean("fastlock_authenticated",false).apply();
-                    // Android can briefly delay background activity launches around
-                    // the keyguard transition, so retry instead of giving up once.
+                        && getSharedPreferences("fastlock", MODE_PRIVATE)
+                        .getBoolean("active", false)) {
+                    screenOn = true;
+                    getSharedPreferences("fastlock", MODE_PRIVATE).edit()
+                            .putBoolean("fastlock_authenticated", false).apply();
                     scheduleLayerAttempts();
                 }
             }
@@ -62,96 +56,81 @@ public class FastOverlayService extends Service {
         f.addAction(Intent.ACTION_SCREEN_OFF);
         f.addAction(Intent.ACTION_SCREEN_ON);
         if (Build.VERSION.SDK_INT >= 33)
-            registerReceiver(screenReceiver,f,RECEIVER_NOT_EXPORTED);
+            registerReceiver(screenReceiver, f, RECEIVER_NOT_EXPORTED);
         else
-            registerReceiver(screenReceiver,f);
+            registerReceiver(screenReceiver, f);
+    }
+
+    private boolean isDisplayOn() {
+        PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
+        return pm != null && pm.isInteractive();
     }
 
     private void scheduleLayerAttempts() {
         handler.removeCallbacksAndMessages(null);
-        // Keep a lightweight guard running while FastLock is active. This is a
-        // fallback for launcher/home navigation on Android versions that allow
-        // the system gesture to briefly move another app to the foreground.
-        handler.postDelayed(new Runnable(){
-            @Override public void run(){
-                if(getSharedPreferences("fastlock",MODE_PRIVATE)
-                        .getBoolean("active",false)
-                        && !getSharedPreferences("fastlock",MODE_PRIVATE)
-                        .getBoolean("fastlock_authenticated",false)){
+        if (!screenOn || !isDisplayOn()) return;
+
+        handler.postDelayed(new Runnable() {
+            @Override public void run() {
+                if (!screenOn || !isDisplayOn()) return;
+
+                android.content.SharedPreferences p =
+                        getSharedPreferences("fastlock", MODE_PRIVATE);
+
+                if (p.getBoolean("active", false)
+                        && !p.getBoolean("fastlock_authenticated", false)) {
                     showLockLayer();
-                }
-                if(getSharedPreferences("fastlock",MODE_PRIVATE)
-                        .getBoolean("active",false)){
-                    handler.postDelayed(this,900);
+                    handler.postDelayed(this, 900);
                 }
             }
-        },50);
+        }, 50);
 
-        for(int n=0;n<8;n++){
-            final int attempt=n;
+        for (int n = 0; n < 8; n++) {
+            final int attempt = n;
             handler.postDelayed(() -> {
-                if (getSharedPreferences("fastlock",MODE_PRIVATE)
-                        .getBoolean("active",false)) {
+                if (screenOn && isDisplayOn()
+                        && getSharedPreferences("fastlock", MODE_PRIVATE)
+                        .getBoolean("active", false)
+                        && !getSharedPreferences("fastlock", MODE_PRIVATE)
+                        .getBoolean("fastlock_authenticated", false)) {
                     showLockLayer();
                 }
-            },120L + n*450L);
+            }, 120L + attempt * 450L);
         }
     }
 
     private void showLockLayer() {
-        if (!getSharedPreferences("fastlock",MODE_PRIVATE)
-                .getBoolean("active",false)) return;
+        if (!screenOn || !isDisplayOn()) return;
+        android.content.SharedPreferences p =
+                getSharedPreferences("fastlock", MODE_PRIVATE);
+        if (!p.getBoolean("active", false)
+                || p.getBoolean("fastlock_authenticated", false)) return;
+
         try {
-            Intent i = new Intent(this,LockLayerActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK |
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP |
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP |
-                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            Intent i = new Intent(this, LockLayerActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
             startActivity(i);
-        } catch (Exception ignored) {
-            // The activity guard will retry while FastLock remains active.
-        }
+        } catch (Exception ignored) {}
     }
 
-    private int type() {
-        return Build.VERSION.SDK_INT >= 26
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE;
-    }
-
-    private WindowManager.LayoutParams lp(int w,int h) {
-        WindowManager.LayoutParams p=new WindowManager.LayoutParams(
-                w,h,type(),WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                android.graphics.PixelFormat.TRANSLUCENT);
-        p.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;
-        p.y=28;
-        return p;
-    }
-
-    private void showIcon() {
-        // Fallback floating icon intentionally disabled; the lock layer is the only gate.
-    }
-
-    private void removeIcon() {
-        if(iconView!=null){
-            try { wm.removeView(iconView); } catch(Exception ignored) {}
-            iconView=null;
-        }
-    }
-
-    @Override public int onStartCommand(Intent intent,int flags,int id) {
-        if(getSharedPreferences("fastlock",MODE_PRIVATE)
-                .getBoolean("active",false)) {
+    @Override public int onStartCommand(Intent intent, int flags, int id) {
+        if (getSharedPreferences("fastlock", MODE_PRIVATE)
+                .getBoolean("active", false) && isDisplayOn()) {
+            screenOn = true;
             scheduleLayerAttempts();
         }
         return START_STICKY;
     }
 
     @Override public void onTaskRemoved(Intent rootIntent) {
-        if(getSharedPreferences("fastlock",MODE_PRIVATE)
-                .getBoolean("active",false)) {
-            Intent restart=new Intent(getApplicationContext(),FastOverlayService.class);
-            if(Build.VERSION.SDK_INT>=26)
+        if (getSharedPreferences("fastlock", MODE_PRIVATE)
+                .getBoolean("active", false)) {
+            Intent restart = new Intent(getApplicationContext(),
+                    FastOverlayService.class);
+            if (Build.VERSION.SDK_INT >= 26)
                 getApplicationContext().startForegroundService(restart);
             else
                 getApplicationContext().startService(restart);
@@ -160,10 +139,9 @@ public class FastOverlayService extends Service {
     }
 
     @Override public void onDestroy() {
-        removeIcon();
         handler.removeCallbacksAndMessages(null);
-        if(screenReceiver!=null){
-            try { unregisterReceiver(screenReceiver); } catch(Exception ignored) {}
+        if (screenReceiver != null) {
+            try { unregisterReceiver(screenReceiver); } catch (Exception ignored) {}
         }
         super.onDestroy();
     }
