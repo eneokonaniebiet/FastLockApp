@@ -177,7 +177,7 @@ public class LockLayerActivity extends FragmentActivity {
             float p=active?Math.min(1f,
                     (System.currentTimeMillis()-start)/1200f):0f;
             c.drawArc(cx-r,cy-r,cx+r,cy+r,-90,p*360,false,progress);
-            c.drawText(active?"Keep holding":"FastLock",cx,cy+6,text);
+            c.drawText(active?"Checking…":"FastLock",cx,cy+6,text);
             if(active) postInvalidateDelayed(30);
         }
 
