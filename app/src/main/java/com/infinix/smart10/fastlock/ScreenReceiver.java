@@ -1,0 +1,3 @@
+package com.infinix.smart10.fastlock;
+import android.content.BroadcastReceiver; import android.content.Context; import android.content.Intent;
+public class ScreenReceiver extends BroadcastReceiver { @Override public void onReceive(Context context,Intent intent){if(Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())){context.getSharedPreferences("fastlock",Context.MODE_PRIVATE).edit().putBoolean("active",false).apply();context.stopService(new Intent(context,FastOverlayService.class));}}}
