@@ -35,7 +35,7 @@ public class LockLayerActivity extends FragmentActivity {
         FrameLayout root=new FrameLayout(this);
         try{
             android.graphics.drawable.Drawable wallpaper=
-                    android.app.WallpaperManager.getInstance(this).getDrawable();
+                    android.app.WallpaperManager.getInstance(this).getDrawable(android.app.WallpaperManager.FLAG_LOCK);
             root.setBackground(wallpaper!=null?wallpaper:color(0xFF080A0F));
         }catch(Exception e){root.setBackgroundColor(0xFF080A0F);}
 
