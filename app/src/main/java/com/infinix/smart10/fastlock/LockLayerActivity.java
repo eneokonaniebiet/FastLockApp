@@ -24,8 +24,13 @@ public class LockLayerActivity extends FragmentActivity {
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED|
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON|
-                WindowManager.LayoutParams.FLAG_FULLSCREEN|
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // Keep Android's real status bar visible so time, battery and connectivity remain visible.
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
 
         FrameLayout root=new FrameLayout(this);
         try{
@@ -64,6 +69,8 @@ public class LockLayerActivity extends FragmentActivity {
         // Do not put a touch listener on the full root. That could steal the
         // fingerprint button's MotionEvents. Swipe-up is handled by the button itself.
         setContentView(root);
+        wakePulseUntil=System.currentTimeMillis()+900L;
+        fingerprint.postInvalidateDelayed(40);
     }
 
     private android.graphics.drawable.ColorDrawable color(int c){
@@ -154,6 +161,7 @@ public class LockLayerActivity extends FragmentActivity {
         boolean active=false;
         boolean unlocked=false;
         long start;
+        long wakePulseUntil;
         float downRawY;
 
         TouchUnlockView(){
@@ -174,8 +182,16 @@ public class LockLayerActivity extends FragmentActivity {
             float cx=getWidth()/2f,cy=getHeight()/2f,
                     r=Math.min(getWidth(),getHeight())*.34f;
             c.drawCircle(cx,cy,r,ring);
-            float p=active?Math.min(1f,
-                    (System.currentTimeMillis()-start)/1200f):0f;
+            long now=System.currentTimeMillis();
+            boolean wakePulse=now<wakePulseUntil;
+            float p=active?Math.min(1f,(now-start)/1200f):0f;
+            if(wakePulse){
+                float pulse=.55f + .45f*(float)Math.sin((now%500)/500f*Math.PI);
+                progress.setColor(0xFFB99A45);
+                progress.setStrokeWidth(12f + 5f*pulse);
+                c.drawCircle(cx,cy,r + 3f*pulse,progress);
+                postInvalidateDelayed(40);
+            }
             c.drawArc(cx-r,cy-r,cx+r,cy+r,-90,p*360,false,progress);
             c.drawText("FastLock",cx,cy+6,text);
             if(active) postInvalidateDelayed(30);
