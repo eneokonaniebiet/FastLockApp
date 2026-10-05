@@ -69,6 +69,24 @@ public class FastOverlayService extends Service {
 
     private void scheduleLayerAttempts() {
         handler.removeCallbacksAndMessages(null);
+        // Keep a lightweight guard running while FastLock is active. This is a
+        // fallback for launcher/home navigation on Android versions that allow
+        // the system gesture to briefly move another app to the foreground.
+        handler.postDelayed(new Runnable(){
+            @Override public void run(){
+                if(getSharedPreferences("fastlock",MODE_PRIVATE)
+                        .getBoolean("active",false)
+                        && !getSharedPreferences("fastlock",MODE_PRIVATE)
+                        .getBoolean("fastlock_authenticated",false)){
+                    showLockLayer();
+                }
+                if(getSharedPreferences("fastlock",MODE_PRIVATE)
+                        .getBoolean("active",false)){
+                    handler.postDelayed(this,900);
+                }
+            }
+        },350);
+
         for(int n=0;n<8;n++){
             final int attempt=n;
             handler.postDelayed(() -> {
