@@ -16,7 +16,9 @@ public class MainActivity extends Activity {
         if(prefs.getBoolean("active",false) && !prefs.getBoolean("fastlock_authenticated",false)){
             startActivity(new Intent(this,LockLayerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             finish();
-            return;\n        }\n        buildUi();}
+            return;
+        }
+        buildUi();}
 
     private void migrateOldTouchCredential(){
         String saved=prefs.getString("fast_fingerprint_signatures","");
