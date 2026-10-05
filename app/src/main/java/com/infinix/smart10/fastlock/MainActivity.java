@@ -42,8 +42,7 @@ public class MainActivity extends Activity {
         TextView lockTaskStatus=new TextView(this);
         DevicePolicyManager dpm=(DevicePolicyManager)getSystemService(DEVICE_POLICY_SERVICE);
         boolean deviceOwner=dpm!=null && dpm.isDeviceOwnerApp(getPackageName());
-        boolean adminActive=dpm!=null && dpm.isAdminActive(
-                new ComponentName(this,FastLockDeviceAdminReceiver.class));
+        boolean adminActive=dpm!=null && dpm.isAdminActive(new ComponentName(this,FastLockDeviceAdminReceiver.class));
         lockTaskStatus.setText("\nAndroid Lock Task: "+(deviceOwner?"READY (Device Owner)":(adminActive?"ADMIN ENABLED — Device Owner still required":"NOT PROVISIONED"))+
                 "\nHome/Overview blocking uses Android Lock Task when FastLock is Device Owner.");
         lockTaskStatus.setTextColor(0xFFB99A45); lockTaskStatus.setTextSize(14); lockTaskStatus.setGravity(Gravity.CENTER);
@@ -68,25 +67,40 @@ public class MainActivity extends Activity {
         return s.isEmpty()?0:s.split(",").length;
     }
 
+    private void setActive(boolean active){
+        prefs.edit().putBoolean("active",active).putBoolean("fastlock_authenticated",false).apply();
+        getApplicationContext().createDeviceProtectedStorageContext()
+                .getSharedPreferences("fastlock",MODE_PRIVATE).edit()
+                .putBoolean("active",active)
+                .putBoolean("fastlock_authenticated",false)
+                .apply();
+    }
+
     private void toggleFastLock(){
-        if(prefs.getBoolean("active",false)){prefs.edit().putBoolean("active",false).putBoolean("fastlock_authenticated",false).apply();stopService(new Intent(this,FastOverlayService.class));buildUi();return;}
+        if(prefs.getBoolean("active",false)){
+            setActive(false);
+            stopService(new Intent(this,FastOverlayService.class));
+            buildUi();
+            return;
+        }
         if(!prefs.contains("passcode_hash")){Toast.makeText(this,"Set your FastLock PIN first.",Toast.LENGTH_LONG).show();return;}
         if(!prefs.getBoolean("fast_fingerprint_enabled",false)){Toast.makeText(this,"Set up at least one FastLock fingerprint first.",Toast.LENGTH_LONG).show();return;}
         if(!Settings.canDrawOverlays(this)){startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),OVERLAY_REQ);return;}
-        prefs.edit().putBoolean("active",true).putBoolean("fastlock_authenticated",false).apply(); startLayer(); buildUi();
+        setActive(true);
+        getApplicationContext().createDeviceProtectedStorageContext()
+                .getSharedPreferences("fastlock",MODE_PRIVATE).edit()
+                .putBoolean("fastlock_require_pin_after_boot",false).apply();
+        startLayer();
+        buildUi();
     }
 
     private void enableAndroidAdmin(){
         DevicePolicyManager dpm=(DevicePolicyManager)getSystemService(DEVICE_POLICY_SERVICE);
         ComponentName admin=new ComponentName(this,FastLockDeviceAdminReceiver.class);
-        if(dpm!=null && dpm.isAdminActive(admin)){
-            Toast.makeText(this,"FastLock Android admin is already enabled.",Toast.LENGTH_SHORT).show();
-            return;
-        }
+        if(dpm!=null && dpm.isAdminActive(admin)){Toast.makeText(this,"FastLock Android admin is already enabled.",Toast.LENGTH_SHORT).show();return;}
         Intent i=new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
         i.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN,admin);
-        i.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                "FastLock uses Android device policy for its optional Lock Task security mode.");
+        i.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,"FastLock uses Android device policy for its optional Lock Task security mode.");
         startActivityForResult(i,4301);
     }
 
