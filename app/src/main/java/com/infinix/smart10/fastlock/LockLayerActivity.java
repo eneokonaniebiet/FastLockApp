@@ -10,7 +10,7 @@ import androidx.fragment.app.FragmentActivity;
 
 public class LockLayerActivity extends FragmentActivity {
     private static final int PIN_REQUEST=78;
-    private static final int MAX_FAILED_TOUCHES=5;
+    private static final int MAX_FAILED_TOUCHES=10;
     private TouchUnlockView fingerprint;
     private boolean authenticating=false;
     private final android.os.Handler guardHandler=new android.os.Handler(android.os.Looper.getMainLooper());
@@ -47,14 +47,26 @@ public class LockLayerActivity extends FragmentActivity {
         root.addView(fingerprint,sensorLp);
         setContentView(root);
 
-        wakePulseUntil=System.currentTimeMillis()+5000L;
-        fingerprint.postInvalidateDelayed(40);
+        startWakePulse();
         try{
             android.media.ToneGenerator tone=new android.media.ToneGenerator(
                     android.media.AudioManager.STREAM_NOTIFICATION,70);
             tone.startTone(android.media.ToneGenerator.TONE_PROP_BEEP,90);
             fingerprint.postDelayed(tone::release,180);
         }catch(Exception ignored){}
+    }
+
+    private void startWakePulse(){
+        wakePulseUntil=System.currentTimeMillis()+7000L;
+        if(fingerprint!=null){
+            fingerprint.setVisibility(View.VISIBLE);
+            fingerprint.postInvalidateDelayed(16);
+        }
+    }
+
+    @Override protected void onResume(){
+        super.onResume();
+        if(fingerprint!=null && !authenticating) startWakePulse();
     }
 
     private android.graphics.drawable.ColorDrawable color(int c){
@@ -173,10 +185,12 @@ public class LockLayerActivity extends FragmentActivity {
             boolean disabled=isTouchLocked();
 
             if(wakePulse||active){
-                float pulse=.55f+.45f*(float)Math.sin((now%500)/500f*Math.PI);
-                progress.setColor(disabled?0xFF777777:0xFFB99A45);
-                progress.setStrokeWidth(disabled?12f:12f+5f*pulse);
-                c.drawCircle(cx,cy,r+3f*pulse,progress);
+                float pulse=.5f-.5f*(float)Math.cos((now%1200L)/1200f*(float)(Math.PI*2));
+                int base=disabled?0x777777:0xB99A45;
+                int alpha=(int)(55+200*pulse);
+                progress.setColor((alpha<<24)|base);
+                progress.setStrokeWidth(disabled?12f:10f+7f*pulse);
+                c.drawCircle(cx,cy,r+4f*pulse,progress);
                 postInvalidateDelayed(40);
             }
             if(active){
