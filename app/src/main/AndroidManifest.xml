@@ -4,7 +4,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" />
 
     <application
         android:allowBackup="true"
@@ -13,15 +12,35 @@
         android:roundIcon="@drawable/ic_fastlock"
         android:supportsRtl="true"
         android:theme="@style/Theme.FastLockApp">
+
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".LockLayerActivity" android:exported="false" android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" android:theme="@style/Theme.Transparent" />
-        <activity android:name=".AuthActivity" android:exported="false" android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" android:theme="@style/Theme.Transparent" />
-        <activity android:name=".ProvisioningActivity" android:exported="true" android:excludeFromRecents="true" android:theme="@style/Theme.FastLockApp">
+
+        <activity
+            android:name=".LockLayerActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="false"
+            android:theme="@style/Theme.Transparent" />
+
+        <activity
+            android:name=".AuthActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="false"
+            android:theme="@style/Theme.Transparent" />
+
+        <activity
+            android:name=".ProvisioningActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.FastLockApp">
             <intent-filter>
                 <action android:name="android.app.action.GET_PROVISIONING_MODE" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -31,15 +50,29 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-        <activity android:name=".FingerprintSetupActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@style/Theme.FastLockApp" />
-        <service android:name=".FastOverlayService" android:exported="false" android:foregroundServiceType="specialUse">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="user_activated_app_lock_layer" />
+
+        <activity
+            android:name=".FingerprintSetupActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.FastLockApp" />
+
+        <service
+            android:name=".FastOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="user_activated_app_lock_layer" />
         </service>
-        <receiver android:name=".FastLockDeviceAdminReceiver"
+
+        <receiver
+            android:name=".FastLockDeviceAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
             android:exported="true"
             android:label="FastLock Android Lock Task">
-            <meta-data android:name="android.app.device_admin"
+            <meta-data
+                android:name="android.app.device_admin"
                 android:resource="@xml/fastlock_device_admin" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
@@ -47,8 +80,16 @@
                 <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
             </intent-filter>
         </receiver>
-        <receiver android:name=".ScreenReceiver" android:exported="false">
-            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+
+        <receiver
+            android:name=".ScreenReceiver"
+            android:exported="false"
+            android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
         </receiver>
     </application>
 </manifest>
