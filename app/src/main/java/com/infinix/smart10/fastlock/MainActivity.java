@@ -12,7 +12,7 @@ public class MainActivity extends Activity {
     private static final int OVERLAY_REQ=4101;
     private android.content.SharedPreferences prefs;
 
-    @Override public void onCreate(Bundle s){super.onCreate(s);prefs=getSharedPreferences("fastlock",MODE_PRIVATE);migrateOldTouchCredential();buildUi();}
+    @Override public void onCreate(Bundle s){super.onCreate(s);prefs=getSharedPreferences("fastlock",MODE_PRIVATE);migrateOldTouchCredential();\n        if(prefs.getBoolean("active",false) && !prefs.getBoolean("fastlock_authenticated",false)){\n            startActivity(new Intent(this,LockLayerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));\n            finish();\n            return;\n        }\n        buildUi();}
 
     private void migrateOldTouchCredential(){
         String saved=prefs.getString("fast_fingerprint_signatures","");
