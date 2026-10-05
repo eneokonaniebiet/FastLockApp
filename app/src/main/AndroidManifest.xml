@@ -18,6 +18,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".LockLayerActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@style/Theme.Transparent" />
         <activity android:name=".AuthActivity" android:exported="false"
             android:excludeFromRecents="true" android:theme="@style/Theme.Transparent" />
         <service android:name=".FastOverlayService" android:exported="false"
