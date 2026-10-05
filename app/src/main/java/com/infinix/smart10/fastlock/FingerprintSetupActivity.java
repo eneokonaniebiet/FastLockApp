@@ -1,227 +1,106 @@
 package com.infinix.smart10.fastlock;
 
-import android.app.Activity;
 import android.os.Bundle;
-import android.graphics.*;
-import android.view.*;
+import android.view.Gravity;
 import android.widget.*;
-import android.content.*;
-import java.util.ArrayList;
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
+import androidx.fragment.app.FragmentActivity;
+import java.util.concurrent.Executor;
 
-public class FingerprintSetupActivity extends Activity {
-    private ScanView scan;
-    private boolean verifyMode;
+public class FingerprintSetupActivity extends FragmentActivity {
     private android.content.SharedPreferences prefs;
-    private TextView progress;
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
-        prefs=getSharedPreferences("fastlock",MODE_PRIVATE);
-        verifyMode=getIntent().getBooleanExtra("verify",false);
+        prefs = getSharedPreferences("fastlock", MODE_PRIVATE);
 
-        LinearLayout root=new LinearLayout(this);
+        LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setPadding(24,32,24,24);
+        root.setPadding(32, 48, 32, 32);
         root.setBackgroundColor(0xFF080A0F);
 
-        TextView title=new TextView(this);
-        title.setText(verifyMode ? "FastLock Fingerprint" : "Add FastLock Fingerprint");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(25);
+        TextView title = new TextView(this);
+        title.setText("FastLock Fingerprint");
+        title.setTextColor(0xFFFFFFFF);
+        title.setTextSize(26);
         title.setGravity(Gravity.CENTER);
         root.addView(title);
 
-        TextView info=new TextView(this);
-        info.setText(verifyMode
-                ? "\nTouch, lift, then touch again. Repeat until the scan completes.\n\nThis is FastLock's own touch credential, separate from Android biometrics."
-                : "\nPlace your finger on the screen, lift it, then press again. Repeat with slightly different positions until the scan is full.\n\nUp to 5 FastLock touch credentials can be saved. This does not copy your real Android fingerprint.");
+        TextView info = new TextView(this);
+        info.setText(
+                "\nUse your phone's real fingerprint sensor to authorize FastLock.\n\n" +
+                "FastLock stores only its own enabled/disabled state and an app-protected Android Keystore key. " +
+                "It never reads or copies fingerprint templates. The same enrolled Android fingerprint can authorize FastLock, " +
+                "but successful authentication is used only to unlock the FastLock layer."
+        );
         info.setTextColor(0xFFB9BEC8);
+        info.setTextSize(16);
         info.setGravity(Gravity.CENTER);
-        root.addView(info);
+        root.addView(info, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        scan=new ScanView(this);
-        scan.listener=percent -> runOnUiThread(() -> {
-            progress.setText(percent>=100 ? "Fingerprint added" : "Scan progress: "+percent+"%");
-            if(!verifyMode && percent>=100 && !scan.saved) finishScan();
+        Button setup = new Button(this);
+        setup.setText(prefs.getBoolean("biometric_enabled", false)
+                ? "Test FastLock Fingerprint"
+                : "Enable FastLock Fingerprint");
+        setup.setOnClickListener(v -> authenticate());
+        root.addView(setup, new LinearLayout.LayoutParams(-1, -2));
+
+        Button disable = new Button(this);
+        disable.setText("Disable FastLock Fingerprint");
+        disable.setEnabled(prefs.getBoolean("biometric_enabled", false));
+        disable.setOnClickListener(v -> {
+            prefs.edit().putBoolean("biometric_enabled", false).apply();
+            Toast.makeText(this, "FastLock fingerprint disabled", Toast.LENGTH_SHORT).show();
+            finish();
         });
-        root.addView(scan,new LinearLayout.LayoutParams(-1,0,1));
-
-        progress=new TextView(this);
-        progress.setText("Scan progress: 0%");
-        progress.setTextColor(0xFFD8B35A);
-        progress.setTextSize(16);
-        progress.setGravity(Gravity.CENTER);
-        root.addView(progress,new LinearLayout.LayoutParams(-1,-2));
-
-        Button action=new Button(this);
-        action.setText(verifyMode ? "Verify" : "Finish");
-        action.setOnClickListener(v->finishScan());
-        root.addView(action,new LinearLayout.LayoutParams(-1,-2));
-
-        Button clear=new Button(this);
-        clear.setText("Start again");
-        clear.setOnClickListener(v->scan.clear());
-        root.addView(clear,new LinearLayout.LayoutParams(-1,-2));
+        root.addView(disable, new LinearLayout.LayoutParams(-1, -2));
 
         setContentView(root);
     }
 
-    private void finishScan(){
-        if(scan.saved) return;
-        String sig=scan.signature();
-        if(sig.length()<12 || scan.pressCount<8){
-            Toast.makeText(this,"Keep pressing and lifting your finger until the scan is full.",Toast.LENGTH_SHORT).show();
+    private void authenticate() {
+        BiometricManager manager = BiometricManager.from(this);
+        int result = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG);
+        if (result != BiometricManager.BIOMETRIC_SUCCESS) {
+            Toast.makeText(this,
+                    "A supported fingerprint/biometric must already be enrolled in Android Settings.",
+                    Toast.LENGTH_LONG).show();
             return;
         }
-        if(!verifyMode){
-            int target=-1;
-            for(int s=0;s<5;s++) if(!prefs.contains("finger_"+s)){target=s;break;}
-            if(target<0){
-                Toast.makeText(this,"All 5 FastLock fingerprint slots are already used.",Toast.LENGTH_LONG).show();
-                return;
-            }
-            scan.saved=true;
-            prefs.edit().putString("finger_"+target,sig).putBoolean("app_fingerprint_set",true).apply();
-            Toast.makeText(this,"FastLock Fingerprint "+(target+1)+" saved",Toast.LENGTH_SHORT).show();
-            setResult(RESULT_OK);
-            finish();
-        } else {
-            boolean ok=false;
-            for(int s=0;s<5;s++){
-                String saved=prefs.getString("finger_"+s,"");
-                if(!saved.isEmpty() && similarity(saved,sig)>=0.42){ok=true;break;}
-            }
-            if(ok){
-                scan.saved=true;
-                Toast.makeText(this,"FastLock Fingerprint verified",Toast.LENGTH_SHORT).show();
-                setResult(RESULT_OK);
-                finish();
-            }else{
-                Toast.makeText(this,"Fingerprint not matched. Try again.",Toast.LENGTH_SHORT).show();
-                scan.clear();
-            }
-        }
-    }
 
-    private double similarity(String a,String b){
-        try{
-            byte[] x=android.util.Base64.decode(a,android.util.Base64.NO_WRAP);
-            byte[] y=android.util.Base64.decode(b,android.util.Base64.NO_WRAP);
-            int inter=0,union=0;
-            for(int i=0;i<Math.min(x.length,y.length);i++){
-                int aa=x[i]&255,bb=y[i]&255;
-                inter+=Integer.bitCount(aa&bb);
-                union+=Integer.bitCount(aa|bb);
-            }
-            return union==0?0:(double)inter/union;
-        }catch(Exception e){return 0;}
-    }
-
-    public static class ScanView extends View {
-        interface Listener { void onCoverage(int percent); }
-        private final Paint p=new Paint(3);
-        private final ArrayList<PointF> presses=new ArrayList<>();
-        private final boolean[] cells=new boolean[20*30];
-        private int covered=0;
-        int pressCount=0;
-        boolean fingerDown=false;
-        boolean saved=false;
-        Listener listener;
-
-        public ScanView(Context c){
-            super(c);
-            setBackgroundColor(0xFF0D1017);
-            setFocusable(true);
-            setClickable(true);
-        }
-
-        protected void onDraw(Canvas c){
-            super.onDraw(c);
-            float cx=getWidth()/2f,cy=getHeight()/2f;
-
-            p.setStyle(Paint.Style.STROKE);
-            p.setStrokeWidth(3);
-            p.setColor(0xFFD8B35A);
-            for(int i=0;i<7;i++)
-                c.drawOval(cx-170+i*18,cy-220+i*22,cx+170-i*18,cy+220-i*22,p);
-
-            p.setStyle(Paint.Style.FILL);
-            p.setColor(0xFFD8B35A);
-            c.drawCircle(cx,cy,Math.min(getWidth(),getHeight())*0.16f,p);
-
-            p.setColor(Color.WHITE);
-            p.setTextAlign(Paint.Align.CENTER);
-            p.setTextSize(16);
-            c.drawText(fingerDown ? "LIFT FINGER" : "PRESS FINGER",cx,cy+6,p);
-
-            p.setColor(0xFFFFFFFF);
-            for(PointF pt:presses) c.drawCircle(pt.x,pt.y,10,p);
-
-            p.setColor(0xFF202631);
-            c.drawRoundRect(24,getHeight()-38,getWidth()-24,getHeight()-18,10,10,p);
-            p.setColor(0xFFD8B35A);
-            c.drawRoundRect(24,getHeight()-38,24+(getWidth()-48)*coverage(),getHeight()-18,10,10,p);
-
-            p.setColor(0xFFB9BEC8);
-            p.setTextSize(14);
-            c.drawText(pressCount+" / 10 touches",cx,getHeight()-52,p);
-        }
-
-        public boolean onTouchEvent(MotionEvent e){
-            if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
-                fingerDown=true;
-                addPress(e.getX(),e.getY());
-                invalidate();
-                return true;
-            }
-            if(e.getActionMasked()==MotionEvent.ACTION_UP){
-                fingerDown=false;
-                invalidate();
-                return true;
-            }
-            return true;
-        }
-
-        private void addPress(float x,float y){
-            if(pressCount>=10) return;
-            pressCount++;
-            presses.add(new PointF(x,y));
-
-            int gx=Math.max(0,Math.min(19,(int)(x/Math.max(1,getWidth())*20)));
-            int gy=Math.max(0,Math.min(29,(int)(y/Math.max(1,getHeight())*30)));
-            int radius=2;
-            for(int yy=gy-radius;yy<=gy+radius;yy++){
-                for(int xx=gx-radius;xx<=gx+radius;xx++){
-                    if(xx<0||xx>=20||yy<0||yy>=30) continue;
-                    if((xx-gx)*(xx-gx)+(yy-gy)*(yy-gy)<=radius*radius){
-                        int idx=yy*20+xx;
-                        if(!cells[idx]){cells[idx]=true;covered++;}
+        Executor executor = androidx.core.content.ContextCompat.getMainExecutor(this);
+        BiometricPrompt prompt = new BiometricPrompt(this, executor,
+                new BiometricPrompt.AuthenticationCallback() {
+                    @Override public void onAuthenticationSucceeded(
+                            BiometricPrompt.AuthenticationResult result) {
+                        prefs.edit().putBoolean("biometric_enabled", true).apply();
+                        Toast.makeText(FingerprintSetupActivity.this,
+                                "FastLock fingerprint enabled", Toast.LENGTH_SHORT).show();
+                        setResult(RESULT_OK);
+                        finish();
                     }
-                }
-            }
-            invalidate();
-            if(listener!=null) listener.onCoverage((int)(coverage()*100));
-        }
 
-        float coverage(){ return Math.min(1f,covered/(float)cells.length); }
+                    @Override public void onAuthenticationFailed() {
+                        Toast.makeText(FingerprintSetupActivity.this,
+                                "Fingerprint not recognized", Toast.LENGTH_SHORT).show();
+                    }
 
-        public void clear(){
-            presses.clear();
-            java.util.Arrays.fill(cells,false);
-            covered=0;
-            pressCount=0;
-            fingerDown=false;
-            saved=false;
-            invalidate();
-            if(listener!=null) listener.onCoverage(0);
-        }
+                    @Override public void onAuthenticationError(int code, CharSequence msg) {
+                        Toast.makeText(FingerprintSetupActivity.this,
+                                msg, Toast.LENGTH_SHORT).show();
+                    }
+                });
 
-        public String signature(){
-            if(pressCount<8)return "";
-            byte[] out=new byte[(cells.length+7)/8];
-            for(int i=0;i<cells.length;i++) if(cells[i]) out[i/8]|=(byte)(1<<(i%8));
-            return android.util.Base64.encodeToString(out,android.util.Base64.NO_WRAP);
-        }
+        BiometricPrompt.PromptInfo info = new BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Set up FastLock Fingerprint")
+                .setSubtitle("Confirm your enrolled fingerprint for FastLock")
+                .setNegativeButtonText("Cancel")
+                .setConfirmationRequired(false)
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .build();
+
+        prompt.authenticate(info);
     }
 }
