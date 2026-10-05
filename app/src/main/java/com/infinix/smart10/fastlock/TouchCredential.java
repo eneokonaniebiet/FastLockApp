@@ -38,7 +38,7 @@ public final class TouchCredential {
         }
 
         public String finish() {
-            if (xs.size() < 4) return "";
+            if (xs.size() < 1) return "";
 
             float minX=xs.get(0), maxX=minX, minY=ys.get(0), maxY=minY;
             for (int i=1;i<xs.size();i++) {
