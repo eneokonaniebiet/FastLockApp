@@ -15,7 +15,9 @@ public class LockLayerActivity extends FragmentActivity {
     private boolean authenticating=false;
     private final android.os.Handler guardHandler=new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable fastFingerprintCheck=()->{ if(fingerprint!=null) fingerprint.tryFastUnlock(); };
-    private long wakePulseUntil;
+    private long screenOffGlowUntil;
+    private boolean screenOffGlow=false;
+    private BroadcastReceiver glowReceiver;
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
@@ -47,6 +49,29 @@ public class LockLayerActivity extends FragmentActivity {
         root.addView(fingerprint,sensorLp);
         setContentView(root);
 
+        glowReceiver=new BroadcastReceiver(){
+            @Override public void onReceive(android.content.Context context,Intent intent){
+                if(Intent.ACTION_SCREEN_OFF.equals(intent.getAction())){
+                    screenOffGlow=true;
+                    screenOffGlowUntil=System.currentTimeMillis()+6000L;
+                    if(fingerprint!=null) fingerprint.invalidate();
+                }else if(Intent.ACTION_SCREEN_ON.equals(intent.getAction())){
+                    stopScreenOffGlow();
+                }
+            }
+        };
+        IntentFilter glowFilter=new IntentFilter();
+        glowFilter.addAction(Intent.ACTION_SCREEN_OFF);
+        glowFilter.addAction(Intent.ACTION_SCREEN_ON);
+        if(android.os.Build.VERSION.SDK_INT>=33) registerReceiver(glowReceiver,glowFilter,RECEIVER_NOT_EXPORTED);
+        else registerReceiver(glowReceiver,glowFilter);
+
+    }
+
+    private void stopScreenOffGlow(){
+        screenOffGlow=false;
+        screenOffGlowUntil=0L;
+        if(fingerprint!=null) fingerprint.invalidate();
     }
 
     private android.graphics.drawable.ColorDrawable color(int c){
@@ -120,8 +145,17 @@ public class LockLayerActivity extends FragmentActivity {
         }catch(Exception ignored){}
     }
 
+    @Override protected void onResume(){
+        super.onResume();
+        // Never start a pulse on screen wake; the sensor stays steady.
+        stopScreenOffGlow();
+    }
+
     @Override protected void onDestroy(){
         guardHandler.removeCallbacksAndMessages(null);
+        if(glowReceiver!=null){
+            try{ unregisterReceiver(glowReceiver); }catch(Exception ignored){}
+        }
         super.onDestroy();
     }
 
@@ -161,16 +195,16 @@ public class LockLayerActivity extends FragmentActivity {
             float r=Math.min(getWidth(),getHeight())*.34f;
             c.drawCircle(cx,cy,r,ring);
             long now=System.currentTimeMillis();
-            boolean wakePulse=now<wakePulseUntil;
+            boolean glow=screenOffGlow && now<screenOffGlowUntil;
             boolean disabled=isTouchLocked();
 
-            if(wakePulse||active){
-                float pulse=.5f-.5f*(float)Math.cos((now%1200L)/1200f*(float)(Math.PI*2));
-                int base=disabled?0x777777:0xB99A45;
-                int alpha=(int)(55+200*pulse);
+            if(glow||active){
+                float pulse=.5f-.5f*(float)Math.cos((now%1600L)/1600f*(float)(Math.PI*2));
+                int base=glow ? 0xFF2196F3 : (disabled?0x777777:0xB99A45);
+                int alpha=(int)(45+210*pulse);
                 progress.setColor((alpha<<24)|base);
                 progress.setStrokeWidth(disabled?12f:10f+7f*pulse);
-                c.drawCircle(cx,cy,r+4f*pulse,progress);
+                c.drawCircle(cx,cy,r+5f*pulse,progress);
                 postInvalidateDelayed(40);
             }
             if(active){
