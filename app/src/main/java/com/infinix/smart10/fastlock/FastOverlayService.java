@@ -85,7 +85,7 @@ public class FastOverlayService extends Service {
                     handler.postDelayed(this,900);
                 }
             }
-        },350);
+        },180);
 
         for(int n=0;n<8;n++){
             final int attempt=n;
@@ -95,7 +95,7 @@ public class FastOverlayService extends Service {
                     showLockLayer();
                     if (attempt==7) showIcon();
                 }
-            },250L + n*600L);
+            },120L + n*450L);
         }
     }
 
