@@ -25,8 +25,8 @@ public class LockLayerActivity extends FragmentActivity {
     private final Runnable fastFingerprintCheck =
             () -> { if (fingerprint != null) fingerprint.tryFastUnlock(); };
 
-    private long wakeGlowUntil;
-    private boolean wakeGlow = false;
+    private long transitionGlowUntil;
+    private boolean transitionGlow = false;
     private BroadcastReceiver screenReceiver;
 
     @Override public void onCreate(Bundle b) {
@@ -75,14 +75,14 @@ public class LockLayerActivity extends FragmentActivity {
         screenReceiver = new BroadcastReceiver() {
             @Override public void onReceive(android.content.Context context, Intent intent) {
                 if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
-                    wakeGlow = false;
-                    wakeGlowUntil = 0L;
+                    transitionGlow = false;
+                    transitionGlowUntil = 0L;
                     if (fingerprint != null) fingerprint.invalidate();
                 } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
-                    // The screen is now actually visible. Give the sensor its
-                    // short blue breathing effect; the layer itself stays put.
-                    wakeGlow = true;
-                    wakeGlowUntil = System.currentTimeMillis() + 6000L;
+                    // The display is visible again. Keep the sensor steady;
+                    // never wake or pulse the screen just for FastLock.
+                    transitionGlow = false;
+                    transitionGlowUntil = 0L;
                     if (fingerprint != null) fingerprint.invalidate();
                 }
             }
@@ -122,7 +122,8 @@ public class LockLayerActivity extends FragmentActivity {
                     // other configurable navigation escapes.
                     dpm.setLockTaskFeatures(
                             admin,
-                            DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO);
+                            DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
+                                    | DevicePolicyManager.LOCK_TASK_FEATURE_BLOCK_ACTIVITY_START_IN_TASK);
                 }
             }
 
@@ -141,9 +142,20 @@ public class LockLayerActivity extends FragmentActivity {
     }
 
     private void stopWakeGlow() {
-        wakeGlow = false;
-        wakeGlowUntil = 0L;
+        transitionGlow = false;
+        transitionGlowUntil = 0L;
         if (fingerprint != null) fingerprint.invalidate();
+    }
+
+    private boolean requiresPinAfterBoot() {
+        return getSharedPreferences("fastlock", MODE_PRIVATE)
+                .getBoolean("fastlock_require_pin_after_boot", false);
+    }
+
+    private void clearPinAfterBootRequirement() {
+        getSharedPreferences("fastlock", MODE_PRIVATE).edit()
+                .putBoolean("fastlock_require_pin_after_boot", false)
+                .apply();
     }
 
     private boolean isTouchLocked() {
@@ -173,7 +185,8 @@ public class LockLayerActivity extends FragmentActivity {
     private void completeUnlock() {
         getSharedPreferences("fastlock", MODE_PRIVATE).edit()
                 .putBoolean("fastlock_authenticated", true)
-                .putInt("fastlock_failed_touches", 0).apply();
+                .putInt("fastlock_failed_touches", 0)
+                .putBoolean("fastlock_require_pin_after_boot", false).apply();
 
         authenticating = true;
         setResult(RESULT_OK);
@@ -255,6 +268,7 @@ public class LockLayerActivity extends FragmentActivity {
         if (r == PIN_REQUEST) {
             if (c == RESULT_OK) {
                 resetTouchFailures();
+                clearPinAfterBootRequirement();
                 completeUnlock();
             } else {
                 authenticating = false;
@@ -290,10 +304,12 @@ public class LockLayerActivity extends FragmentActivity {
             float radius = 48f;
 
             long now = System.currentTimeMillis();
-            boolean glowing = wakeGlow && now < wakeGlowUntil;
+            boolean glowing = transitionGlow && now < transitionGlowUntil;
             boolean disabled = isTouchLocked();
 
-            // Soft blue breathing edge when the display has just woken.
+            // Soft blue breathing edge belongs only to the power transition.
+            // A fully powered-off panel is controlled by Android, so FastLock
+            // never keeps the display awake just to animate this sensor.
             if (glowing) {
                 float pulse = .5f - .5f *
                         (float)Math.cos((now % 1600L) / 1600f *
@@ -375,6 +391,11 @@ public class LockLayerActivity extends FragmentActivity {
 
                 if (held < 90) return true;
 
+                if (requiresPinAfterBoot()) {
+                    openPin();
+                    return true;
+                }
+
                 if (isTouchLocked()) {
                     Toast.makeText(LockLayerActivity.this,
                             "Touch disabled. Swipe up for FastLock PIN.",
@@ -410,7 +431,8 @@ public class LockLayerActivity extends FragmentActivity {
         }
 
         void tryFastUnlock() {
-            if (!active || unlocked || authenticating || isTouchLocked()) return;
+            if (!active || unlocked || authenticating || isTouchLocked()
+                    || requiresPinAfterBoot()) return;
 
             long held = System.currentTimeMillis() - start;
             if (held < 120) return;
