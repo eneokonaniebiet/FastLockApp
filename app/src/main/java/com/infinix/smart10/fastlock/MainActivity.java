@@ -1,0 +1,13 @@
+package com.infinix.smart10.fastlock;
+import android.app.Activity; import android.content.Intent; import android.net.Uri; import android.os.Bundle; import android.provider.Settings; import android.view.Gravity; import android.widget.*;
+public class MainActivity extends Activity {
+ private static final int OVERLAY_REQ=4101; private android.content.SharedPreferences prefs;
+ @Override public void onCreate(Bundle state){super.onCreate(state);prefs=getSharedPreferences("fastlock",MODE_PRIVATE);buildUi();}
+ private void buildUi(){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(48,70,48,40);root.setBackgroundColor(0xFF080A0F);
+ TextView title=new TextView(this);title.setText("FastLockApp");title.setTextColor(0xFFF2F2F2);title.setTextSize(28);title.setGravity(Gravity.CENTER);root.addView(title,new LinearLayout.LayoutParams(-1,-2));
+ TextView info=new TextView(this);info.setText("\nApp-owned lock layer\n\nAndroid's real PIN, password and fingerprint remain untouched.\n\nThe lock layer is temporary and resets after reboot.");info.setTextColor(0xFFB9BEC8);info.setTextSize(16);info.setGravity(Gravity.CENTER);root.addView(info,new LinearLayout.LayoutParams(-1,0,1));
+ Button activate=new Button(this);activate.setText(prefs.getBoolean("active",false)?"Deactivate lock layer":"Activate lock layer");activate.setOnClickListener(v->{boolean active=!prefs.getBoolean("active",false);prefs.edit().putBoolean("active",active).apply();if(active){if(!Settings.canDrawOverlays(this)){startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),OVERLAY_REQ);return;}startLayer();}else stopService(new Intent(this,FastOverlayService.class));buildUi();});root.addView(activate,new LinearLayout.LayoutParams(-1,-2));
+ TextView note=new TextView(this);note.setText("\nDemo app passcode: 7924");note.setTextColor(0xFF777D88);note.setGravity(Gravity.CENTER);root.addView(note,new LinearLayout.LayoutParams(-1,-2));setContentView(root);}
+ private void startLayer(){Intent i=new Intent(this,FastOverlayService.class);if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);}
+ @Override protected void onActivityResult(int r,int c,Intent d){super.onActivityResult(r,c,d);if(r==OVERLAY_REQ&&Settings.canDrawOverlays(this)&&prefs.getBoolean("active",false))startLayer();buildUi();}
+}
