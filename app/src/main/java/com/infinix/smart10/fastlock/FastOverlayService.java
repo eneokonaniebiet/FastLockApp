@@ -85,7 +85,7 @@ public class FastOverlayService extends Service {
                     handler.postDelayed(this,900);
                 }
             }
-        },180);
+        },50);
 
         for(int n=0;n<8;n++){
             final int attempt=n;
