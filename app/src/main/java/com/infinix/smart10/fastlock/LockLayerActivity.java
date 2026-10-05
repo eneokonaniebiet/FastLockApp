@@ -4,111 +4,109 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
 import android.view.*;
 import android.widget.*;
 import android.content.Intent;
+import android.net.Uri;
+import java.io.InputStream;
 
 public class LockLayerActivity extends Activity {
     private float downY;
 
-    @Override
-    public void onCreate(Bundle b) {
+    @Override public void onCreate(Bundle b) {
         super.onCreate(b);
-
         if (android.os.Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true);
             setTurnScreenOn(true);
         }
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
 
-        getWindow().addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-        );
-
+        android.content.SharedPreferences prefs = getSharedPreferences("fastlock", MODE_PRIVATE);
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.TRANSPARENT);
+
+        String wallpaper = prefs.getString("wallpaper_uri", "");
+        if (!wallpaper.isEmpty()) {
+            try {
+                InputStream in = getContentResolver().openInputStream(Uri.parse(wallpaper));
+                Drawable d = Drawable.createFromStream(in, "fastlock_wallpaper");
+                if (in != null) in.close();
+                if (d != null) root.setBackground(d);
+                else root.setBackgroundColor(Color.TRANSPARENT);
+            } catch (Exception e) {
+                root.setBackgroundColor(Color.TRANSPARENT);
+            }
+        } else root.setBackgroundColor(Color.TRANSPARENT);
 
         TextView hint = new TextView(this);
-        hint.setText("FastLock\nSwipe up for FastLock unlock");
-        hint.setTextColor(0xCCFFFFFF);
+        hint.setText("FastLock\nSwipe up to unlock");
+        hint.setTextColor(0xDDFFFFFF);
         hint.setTextSize(12);
         hint.setGravity(Gravity.CENTER);
-        hint.setPadding(8, 8, 8, 8);
 
-        TextView button = new TextView(this);
-        button.setText("⌾");
-        button.setTextColor(Color.WHITE);
-        button.setTextSize(27);
-        button.setGravity(Gravity.CENTER);
+        ImageView fingerprint = new ImageView(this);
+        fingerprint.setImageResource(R.drawable.ic_fastlock);
+        fingerprint.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        fingerprint.setPadding(7,7,7,7);
+        fingerprint.setContentDescription("FastLock unlock");
 
-        GradientDrawable circle = new GradientDrawable();
-        circle.setColor(0xEE171A21);
-        circle.setShape(GradientDrawable.OVAL);
-        circle.setStroke(2, 0xFFD8B35A);
-        button.setBackground(circle);
+        GradientDrawable ring = new GradientDrawable();
+        ring.setColor(0xCC080A0F);
+        ring.setShape(GradientDrawable.OVAL);
+        ring.setStroke(1, 0xFFD8B35A);
+        fingerprint.setBackground(ring);
 
-        button.setOnClickListener(v -> openAuth());
+        fingerprint.setOnClickListener(v -> openAuth());
 
-        View.OnTouchListener swipe = (v, event) -> {
+        View.OnTouchListener swipe = (v,event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 downY = event.getRawY();
                 return true;
             }
             if (event.getAction() == MotionEvent.ACTION_UP) {
-                float dy = event.getRawY() - downY;
-                if (dy < -120f) {
-                    openAuth();
-                    return true;
-                }
+                if (event.getRawY() - downY < -100f) openAuth();
+                return true;
             }
-            return false;
+            return true;
         };
-
         root.setOnTouchListener(swipe);
 
-        button.setOnTouchListener((v, event) -> {
+        fingerprint.setOnTouchListener((v,event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 downY = event.getRawY();
                 return true;
             }
             if (event.getAction() == MotionEvent.ACTION_UP) {
-                float dy = event.getRawY() - downY;
-                if (dy < -120f) {
-                    openAuth();
-                } else {
-                    v.performClick();
-                }
+                if (event.getRawY() - downY < -80f) openAuth();
+                else v.performClick();
                 return true;
             }
             return true;
         });
 
-        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(
-                76, 76, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        bp.bottomMargin = 28;
+        FrameLayout.LayoutParams fp = new FrameLayout.LayoutParams(
+                54,54,Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        fp.bottomMargin = 62;
 
         FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(
-                -2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        hp.bottomMargin = 108;
+                -2,-2,Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        hp.bottomMargin = 128;
 
-        root.addView(hint, hp);
-        root.addView(button, bp);
+        root.addView(hint,hp);
+        root.addView(fingerprint,fp);
         setContentView(root);
     }
 
     private void openAuth() {
         Intent intent = new Intent(this, AuthActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
         startActivity(intent);
     }
 
     @Override protected void onResume() {
         super.onResume();
-
-        android.content.SharedPreferences prefs =
-                getSharedPreferences("fastlock", MODE_PRIVATE);
-
-        // Successful FastLock authentication closes this app-owned layer.
-        // Android's real Keyguard remains in control.
+        android.content.SharedPreferences prefs = getSharedPreferences("fastlock", MODE_PRIVATE);
         if (prefs.getBoolean("fastlock_authenticated", false)) {
             prefs.edit().putBoolean("fastlock_authenticated", false).apply();
             finish();
