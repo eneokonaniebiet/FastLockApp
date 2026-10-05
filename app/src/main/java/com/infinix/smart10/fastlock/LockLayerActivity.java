@@ -7,6 +7,8 @@ import android.graphics.drawable.*;
 import android.view.*;
 import android.widget.*;
 import android.content.Intent;
+import android.app.admin.DevicePolicyManager;
+import android.content.ComponentName;
 import android.content.BroadcastReceiver;
 import android.content.IntentFilter;
 import androidx.fragment.app.FragmentActivity;
@@ -68,6 +70,7 @@ public class LockLayerActivity extends FragmentActivity {
         root.addView(fingerprint, sensorLp);
 
         setContentView(root);
+        enterAndroidLockTaskIfAvailable();
 
         screenReceiver = new BroadcastReceiver() {
             @Override public void onReceive(android.content.Context context, Intent intent) {
@@ -92,6 +95,49 @@ public class LockLayerActivity extends FragmentActivity {
             registerReceiver(screenReceiver, filter, RECEIVER_NOT_EXPORTED);
         else
             registerReceiver(screenReceiver, filter);
+    }
+
+
+    /**
+     * Use Android's real Lock Task mode when FastLock has been provisioned as
+     * the device owner. This is the system-level path that disables Home and
+     * Overview instead of trying to fake-disable navigation gestures.
+     *
+     * A normal installed app cannot grant itself Device Owner status, so the
+     * existing FastLock gate remains the fallback on ordinary installs.
+     */
+    private void enterAndroidLockTaskIfAvailable() {
+        try {
+            DevicePolicyManager dpm =
+                    (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            ComponentName admin =
+                    new ComponentName(this, FastLockDeviceAdminReceiver.class);
+
+            if (dpm != null && dpm.isDeviceOwnerApp(getPackageName())) {
+                dpm.setLockTaskPackages(admin, new String[]{getPackageName()});
+
+                if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    // Keep only basic system information such as clock/status
+                    // while disabling Home, Overview, notifications and the
+                    // other configurable navigation escapes.
+                    dpm.setLockTaskFeatures(
+                            admin,
+                            DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO);
+                }
+            }
+
+            if (dpm != null && dpm.isLockTaskPermitted(getPackageName())) {
+                startLockTask();
+            }
+        } catch (SecurityException ignored) {
+            // Not provisioned as device owner/profile owner: use normal gate.
+        } catch (Exception ignored) {}
+    }
+
+    private void exitAndroidLockTask() {
+        try {
+            stopLockTask();
+        } catch (Exception ignored) {}
     }
 
     private void stopWakeGlow() {
@@ -131,6 +177,7 @@ public class LockLayerActivity extends FragmentActivity {
 
         authenticating = true;
         setResult(RESULT_OK);
+        exitAndroidLockTask();
 
         // LockLayer belongs to FastLock's task. Put that task behind the task
         // that was visible before FastLock appeared, instead of opening
@@ -190,6 +237,7 @@ public class LockLayerActivity extends FragmentActivity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (!authenticating) enterAndroidLockTaskIfAvailable();
         // Do not create another glow here. ScreenReceiver owns the wake effect.
         if (!isDisplayOn()) stopWakeGlow();
     }
