@@ -47,27 +47,6 @@ public class LockLayerActivity extends FragmentActivity {
         root.addView(fingerprint,sensorLp);
         setContentView(root);
 
-        boolean wakePulse = getSharedPreferences("fastlock",MODE_PRIVATE)\n                .getBoolean("fastlock_wake_pulse",false);\n        if(wakePulse){\n            getSharedPreferences("fastlock",MODE_PRIVATE).edit()\n                    .putBoolean("fastlock_wake_pulse",false).apply();\n            startWakePulse();\n        }
-        try{
-            android.media.ToneGenerator tone=new android.media.ToneGenerator(
-                    android.media.AudioManager.STREAM_NOTIFICATION,70);
-            tone.startTone(android.media.ToneGenerator.TONE_PROP_BEEP,90);
-            fingerprint.postDelayed(tone::release,180);
-        }catch(Exception ignored){}
-    }
-
-    private void startWakePulse(){
-        wakePulseUntil=System.currentTimeMillis()+7000L;
-        if(fingerprint!=null){
-            fingerprint.setVisibility(View.VISIBLE);
-            fingerprint.postInvalidateDelayed(16);
-        }
-    }
-
-    @Override protected void onResume(){
-        super.onResume();
-        if(fingerprint!=null && !authenticating) startWakePulse();
-    }
 
     private android.graphics.drawable.ColorDrawable color(int c){
         return new android.graphics.drawable.ColorDrawable(c);
