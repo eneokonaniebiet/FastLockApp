@@ -7,8 +7,8 @@ android {
         applicationId 'com.infinix.smart10.fastlock'
         minSdk 26
         targetSdk 35
-        versionCode 3
-        versionName '2.0'
+        versionCode 4
+        versionName '2.1'
     }
 }
 
@@ -22,5 +22,4 @@ configurations.configureEach {
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'androidx.biometric:biometric:1.1.0'
 }
