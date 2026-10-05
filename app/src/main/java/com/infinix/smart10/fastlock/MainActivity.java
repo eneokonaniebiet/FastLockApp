@@ -12,6 +12,8 @@ import android.widget.*;
 public class MainActivity extends Activity {
     private static final int OVERLAY_REQ=4101;
     private android.content.SharedPreferences prefs;
+    private static final String FIRST_INSTALL_KEY = "first_install_unlocked";
+    private static final String FIRST_INSTALL_CODE = "7924";
 
     @Override public void onCreate(Bundle s){super.onCreate(s);prefs=getSharedPreferences("fastlock",MODE_PRIVATE);migrateOldTouchCredential();
         if(prefs.getBoolean("active",false) && !prefs.getBoolean("fastlock_authenticated",false)){
@@ -19,7 +21,40 @@ public class MainActivity extends Activity {
             finish();
             return;
         }
+        if(!prefs.getBoolean(FIRST_INSTALL_KEY,false)){
+            showFirstInstallSafetyKey();
+            return;
+        }
         buildUi();}
+
+    private void showFirstInstallSafetyKey(){
+        final EditText input=new EditText(this);
+        input.setHint("Enter safety key");
+        input.setInputType(2);
+        input.setTextColor(0xFFFFFFFF);
+        input.setHintTextColor(0xFF777D88);
+        AlertDialog dialog=new AlertDialog.Builder(this)
+                .setTitle("FastLock Safety Key")
+                .setMessage("Enter the first-install safety key to continue setup.")
+                .setView(input)
+                .setPositiveButton("Unlock",null)
+                .setNegativeButton("Exit",null)
+                .create();
+        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if(FIRST_INSTALL_CODE.equals(input.getText().toString().trim())){
+                prefs.edit().putBoolean(FIRST_INSTALL_KEY,true).apply();
+                dialog.dismiss();
+                buildUi();
+                Toast.makeText(this,"FastLock first-install safety unlock complete.",Toast.LENGTH_SHORT).show();
+            }else{
+                input.setText("");
+                Toast.makeText(this,"Incorrect safety key.",Toast.LENGTH_SHORT).show();
+            }
+        }));
+        dialog.setOnCancelListener(x -> finishAndRemoveTask());
+        dialog.setCanceledOnTouchOutside(false);
+        dialog.show();
+    }
 
     private void migrateOldTouchCredential(){
         String saved=prefs.getString("fast_fingerprint_signatures","");
