@@ -1,6 +1,6 @@
 package com.infinix.smart10.fastlock;
 
-import android.app.Activity;
+import androidx.fragment.app.FragmentActivity;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.WindowManager;
@@ -12,7 +12,7 @@ import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
 import java.util.concurrent.Executor;
 
-public class AuthActivity extends Activity {
+public class AuthActivity extends FragmentActivity {
     private android.content.SharedPreferences prefs;
     private EditText pass;
 
