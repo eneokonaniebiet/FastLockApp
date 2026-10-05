@@ -12,6 +12,9 @@ public class LockLayerActivity extends FragmentActivity {
     private TouchUnlockView fingerprint;
     private boolean authenticating = false;
     private final android.os.Handler guardHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable fastFingerprintCheck = () -> {
+        if(fingerprint!=null) fingerprint.tryFastUnlock();
+    };
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -48,7 +51,7 @@ public class LockLayerActivity extends FragmentActivity {
         bottom.addView(title);
 
         TextView hint=new TextView(this);
-        hint.setText("\nTouch and hold to use FastLock Fingerprint\nSwipe up from the button for FastLock PIN");
+        hint.setText("\nPlace your enrolled finger on the FastLock sensor\nSwipe up from the button for FastLock PIN");
         hint.setTextColor(0xEEFFFFFF);
         hint.setTextSize(14);
         hint.setGravity(17);
@@ -104,7 +107,7 @@ public class LockLayerActivity extends FragmentActivity {
             guardHandler.postDelayed(() -> {
                 if(!isFinishing() && !authenticating)
                     bringLayerBack();
-            },120);
+            },35);
         }
     }
 
@@ -117,7 +120,7 @@ public class LockLayerActivity extends FragmentActivity {
                         .getBoolean("active",false)){
                     bringLayerBack();
                 }
-            },180);
+            },50);
         }
     }
 
@@ -149,6 +152,7 @@ public class LockLayerActivity extends FragmentActivity {
         Paint ring=new Paint(1), progress=new Paint(1), text=new Paint(1);
         TouchCredential.Session session=new TouchCredential.Session();
         boolean active=false;
+        boolean unlocked=false;
         long start;
         float downRawY;
 
@@ -192,6 +196,8 @@ public class LockLayerActivity extends FragmentActivity {
                 active=true;
                 start=System.currentTimeMillis();
                 session.begin(e);
+                unlocked=false;
+                guardHandler.postDelayed(fastFingerprintCheck,90);
                 invalidate();
                 return true;
             }
@@ -213,7 +219,7 @@ public class LockLayerActivity extends FragmentActivity {
                 session.add(e);
                 long held=System.currentTimeMillis()-start;
 
-                if(held<120){
+                if(held<90){
                     active=false;
                     invalidate();
                     Toast.makeText(LockLayerActivity.this,
@@ -235,8 +241,22 @@ public class LockLayerActivity extends FragmentActivity {
                 }
                 return true;
             }
-
-            return true;
+            
+            void tryFastUnlock(){
+                if(!active || unlocked || authenticating) return;
+                long held=System.currentTimeMillis()-start;
+                if(held<90) return;
+                String candidate=session.finish();
+                String saved=getSharedPreferences("fastlock",MODE_PRIVATE)
+                        .getString("fast_fingerprint_signatures","");
+                if(TouchCredential.matchesAny(candidate,saved)){
+                    unlocked=true;
+                    active=false;
+                    invalidate();
+                    guardHandler.removeCallbacks(fastFingerprintCheck);
+                    completeUnlock();
+                }
+            }
         }
     }
 }
