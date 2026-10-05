@@ -75,8 +75,11 @@ public class LockLayerActivity extends FragmentActivity {
         screenReceiver = new BroadcastReceiver() {
             @Override public void onReceive(android.content.Context context, Intent intent) {
                 if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
-                    transitionGlow = false;
-                    transitionGlowUntil = 0L;
+                    // Start the soft sensor fade during the power-off transition.
+                    // Android owns the panel once it is fully off, so this never
+                    // keeps the display awake.
+                    transitionGlow = true;
+                    transitionGlowUntil = System.currentTimeMillis() + 1200L;
                     if (fingerprint != null) fingerprint.invalidate();
                 } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
                     // The display is visible again. Keep the sensor steady;
