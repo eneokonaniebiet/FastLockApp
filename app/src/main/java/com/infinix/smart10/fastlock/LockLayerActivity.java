@@ -29,7 +29,7 @@ public class LockLayerActivity extends Activity {
         root.setBackgroundColor(Color.TRANSPARENT);
 
         TextView hint = new TextView(this);
-        hint.setText("FastLock\nSwipe up for phone lock");
+        hint.setText("FastLock\nSwipe up for FastLock unlock");
         hint.setTextColor(0xCCFFFFFF);
         hint.setTextSize(12);
         hint.setGravity(Gravity.CENTER);
@@ -47,9 +47,7 @@ public class LockLayerActivity extends Activity {
         circle.setStroke(2, 0xFFD8B35A);
         button.setBackground(circle);
 
-        button.setOnClickListener(v ->
-                startActivity(new Intent(this, AuthActivity.class))
-        );
+        button.setOnClickListener(v -> openAuth());
 
         View.OnTouchListener swipe = (v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
@@ -59,7 +57,6 @@ public class LockLayerActivity extends Activity {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 float dy = event.getRawY() - downY;
                 if (dy < -120f) {
-                    // Swipe up opens FastLock's own authentication page.
                     openAuth();
                     return true;
                 }
@@ -77,7 +74,7 @@ public class LockLayerActivity extends Activity {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 float dy = event.getRawY() - downY;
                 if (dy < -120f) {
-                    finish();
+                    openAuth();
                 } else {
                     v.performClick();
                 }
@@ -99,15 +96,19 @@ public class LockLayerActivity extends Activity {
         setContentView(root);
     }
 
+    private void openAuth() {
+        Intent intent = new Intent(this, AuthActivity.class);
+        startActivity(intent);
+    }
+
     @Override protected void onResume() {
         super.onResume();
 
         android.content.SharedPreferences prefs =
                 getSharedPreferences("fastlock", MODE_PRIVATE);
 
-        // Successful FastLock authentication closes this layer completely.
-        // If Android is still locked, its own PIN/pattern/password screen remains.
-        // If Android is not locked, the normal phone screen is revealed.
+        // Successful FastLock authentication closes this app-owned layer.
+        // Android's real Keyguard remains in control.
         if (prefs.getBoolean("fastlock_authenticated", false)) {
             prefs.edit().putBoolean("fastlock_authenticated", false).apply();
             finish();
