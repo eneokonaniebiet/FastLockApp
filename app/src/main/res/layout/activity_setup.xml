@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#050A0E"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="28dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="FASTLOCK SETUP"
+            android:textColor="#00FFCC"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/setupStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:text="ENTER FIRST-INSTALL SAFETY KEY"
+            android:textColor="#8FA8AE"
+            android:textSize="13sp" />
+
+        <EditText
+            android:id="@+id/safetyKeyInput"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="28dp"
+            android:hint="Safety key"
+            android:inputType="number"
+            android:maxLength="4"
+            android:gravity="center"
+            android:textColor="#E8FFF9"
+            android:textColorHint="#526970" />
+
+        <Button
+            android:id="@+id/btnSetupUnlock"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:text="UNLOCK SETUP" />
+
+        <EditText
+            android:id="@+id/pinSetupInput"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="24dp"
+            android:hint="Create 4–6 digit PIN"
+            android:inputType="numberPassword"
+            android:maxLength="6"
+            android:gravity="center"
+            android:enabled="false"
+            android:textColor="#E8FFF9"
+            android:textColorHint="#526970" />
+
+        <Button
+            android:id="@+id/btnSavePin"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:text="SAVE FASTLOCK PIN"
+            android:enabled="false" />
+
+    </LinearLayout>
+</ScrollView>
