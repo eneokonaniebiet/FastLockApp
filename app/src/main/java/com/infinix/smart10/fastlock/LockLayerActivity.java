@@ -34,6 +34,7 @@ public class LockLayerActivity extends FragmentActivity {
     private boolean authenticating = false;
     private float downRawY;
     private long downTime;
+    private final TouchCredential.Session touchSession = new TouchCredential.Session();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private BroadcastReceiver screenReceiver;
 
@@ -104,10 +105,12 @@ public class LockLayerActivity extends FragmentActivity {
                 downRawY = e.getRawY();
                 downTime = System.currentTimeMillis();
                 fingerprint.setPressedState(true);
+                touchSession.begin(e);
                 return true;
             }
 
             if (e.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                touchSession.add(e);
                 if (downRawY - e.getRawY() > dp(70)) {
                     fingerprint.setPressedState(false);
                     openPin();
@@ -118,6 +121,7 @@ public class LockLayerActivity extends FragmentActivity {
             }
 
             if (e.getActionMasked() == MotionEvent.ACTION_UP) {
+                touchSession.add(e);
                 boolean swipe = downRawY - e.getRawY() > dp(70);
                 fingerprint.setPressedState(false);
                 if (swipe) {
@@ -139,20 +143,26 @@ public class LockLayerActivity extends FragmentActivity {
                     return true;
                 }
 
-                // The fingerprint-looking control is an app-owned touch credential.
-                // It never reads or copies the phone's real biometric template.
-                TouchCredential.Session session = new TouchCredential.Session();
-                MotionEvent synthetic = MotionEvent.obtain(e);
-                session.begin(synthetic);
-                session.add(synthetic);
-                synthetic.recycle();
+                String candidate = touchSession.finish();
+                String saved = getSharedPreferences("fastlock", MODE_PRIVATE)
+                        .getString("fast_fingerprint_signatures", "");
 
-                // A stationary tap cannot reproduce an enrolled motion credential.
-                // The enrollment/authentication path therefore uses the existing
-                // FastLock touch signature only when a real touch sequence is supplied.
-                // Keep the visible icon responsive while the user holds it.
                 fingerprint.playScan();
-                fingerprint.postDelayed(() -> finishTouchAuthentication(), 180);
+
+                if (TouchCredential.matchesAny(candidate, saved)) {
+                    FastLockSecurityManager.resetFailures(this);
+                    completeUnlock();
+                } else {
+                    FastLockSecurityManager.recordFailedAttempt(this);
+                    if (FastLockSecurityManager.isLockedOut(this)) {
+                        Toast.makeText(this, "Fingerprint locked for 30 minutes. Swipe up for PIN.", Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(this,
+                                "Fingerprint not verified • "
+                                        + FastLockSecurityManager.getFailedAttempts(this) + "/20",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                }
                 return true;
             }
 
@@ -162,25 +172,6 @@ public class LockLayerActivity extends FragmentActivity {
             }
             return true;
         });
-    }
-
-    private void finishTouchAuthentication() {
-        if (isFinishing() || authenticating) return;
-
-        // Keep compatibility with the existing app-owned credential store.
-        // A real hardware fingerprint template is intentionally not available
-        // to a normal third-party app.
-        String saved = getSharedPreferences("fastlock", MODE_PRIVATE)
-                .getString("fast_fingerprint_signatures", "");
-
-        if (!saved.isEmpty()) {
-            // The existing TouchCredential matcher needs the touch sequence.
-            // For this UI, authentication is completed through the FastLock PIN
-            // if the app-owned touch credential cannot be reconstructed.
-            openPin();
-        } else {
-            openPin();
-        }
     }
 
     private void openPin() {
