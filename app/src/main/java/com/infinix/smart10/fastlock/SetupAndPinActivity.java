@@ -228,9 +228,8 @@ public class SetupAndPinActivity extends AppCompatActivity {
         pinInput.append(digit);
         updatePinDots();
 
-        if (pinInput.length() == MIN_PIN_LENGTH) {
-            verifyEnteredPin();
-        } else if (pinInput.length() == MAX_PIN_LENGTH) {
+        int expectedLength = getStoredPinLength();
+        if (expectedLength > 0 && pinInput.length() == expectedLength) {
             verifyEnteredPin();
         }
     }
@@ -337,6 +336,15 @@ public class SetupAndPinActivity extends AppCompatActivity {
                 pinStatus.setText("PIN VALIDATION FAILED");
             }
             handleFailedPin();
+        }
+    }
+
+    private int getStoredPinLength() {
+        try {
+            String stored = decryptStoredPin();
+            return stored == null ? 0 : stored.length();
+        } catch (Exception ignored) {
+            return 0;
         }
     }
 
@@ -624,6 +632,12 @@ public class SetupAndPinActivity extends AppCompatActivity {
         if (!setupMode && pinInput != null) {
             updateLockoutState();
         }
+    }
+
+    @Override
+    public void onBackPressed() {
+        setResult(RESULT_CANCELED);
+        finish();
     }
 
     @Override
