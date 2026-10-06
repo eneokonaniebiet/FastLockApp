@@ -181,7 +181,7 @@ public class LockLayerActivity extends FragmentActivity {
     private void openPin() {
         authenticating = true;
         startActivityForResult(
-                new Intent(this, AuthActivity.class).putExtra("pin_only", true),
+                new Intent(this, SetupAndPinActivity.class),
                 PIN_REQUEST);
     }
 
