@@ -28,7 +28,7 @@ import androidx.fragment.app.FragmentActivity;
 
 public class LockLayerActivity extends FragmentActivity {
     private static final int PIN_REQUEST = 78;
-    private static final int SENSOR_SIZE_DP = 82;
+    private static final int SENSOR_SIZE_DP = 210;
 
     private FingerprintIconView fingerprint;
     private boolean authenticating = false;
@@ -311,7 +311,7 @@ public class LockLayerActivity extends FragmentActivity {
             super.onDraw(c);
             if (!wakeVisible) return;
 
-            float d = getWidth() / 100f;
+            float d = 0.82f * getResources().getDisplayMetrics().density;
             float cx = getWidth() / 2f;
             float cy = getHeight() / 2f;
 
