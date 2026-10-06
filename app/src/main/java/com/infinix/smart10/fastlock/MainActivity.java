@@ -64,12 +64,19 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean hasFastLockPin(){
+        android.content.SharedPreferences setup =
+                getSharedPreferences("fastlock_setup_state", MODE_PRIVATE);
+        return setup.getString("encrypted_fastlock_pin", null) != null
+                && setup.getString("encrypted_fastlock_pin_iv", null) != null;
+    }
+
     private void buildUi(){
         LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(36,48,36,32); root.setBackgroundColor(0xFF080A0F);
         TextView title=new TextView(this); title.setText("FastLockApp"); title.setTextColor(0xFFF2F2F2); title.setTextSize(28); title.setGravity(Gravity.CENTER); root.addView(title,new LinearLayout.LayoutParams(-1,-2));
         TextView status=new TextView(this);
         status.setText("\nFastLock layer: "+(prefs.getBoolean("active",false)?"ACTIVE":"OFF")+
-                "\n\nFastLock PIN: "+(prefs.contains("passcode_hash")?"Set":"Not set")+
+                "\n\nFastLock PIN: "+(hasFastLockPin()?"Set":"Not set")+
                 "\nFastLock fingerprints: "+fingerCount()+"/5"+
                 "\n\nAuthentication is owned by FastLock. Android fingerprint enrollment is not used.");
         status.setTextColor(0xFFB9BEC8); status.setTextSize(16); status.setGravity(Gravity.CENTER); root.addView(status,new LinearLayout.LayoutParams(-1,0,1));
@@ -88,7 +95,7 @@ public class MainActivity extends Activity {
         admin.setOnClickListener(v->enableAndroidAdmin());
         root.addView(admin,new LinearLayout.LayoutParams(-1,-2));
 
-        Button setup=new Button(this); setup.setText("Set / change FastLock PIN"); setup.setOnClickListener(v->showPasscodeDialog()); root.addView(setup,new LinearLayout.LayoutParams(-1,-2));
+        Button setup=new Button(this); setup.setText("Set / change FastLock PIN"); setup.setOnClickListener(v->startActivity(new Intent(this,SetupAndPinActivity.class))); root.addView(setup,new LinearLayout.LayoutParams(-1,-2));
         Button finger=new Button(this); finger.setText(fingerCount()>0?"Manage FastLock Fingerprints":"Set up FastLock Fingerprint");
         finger.setOnClickListener(v->startActivity(new Intent(this,FingerprintSetupActivity.class))); root.addView(finger,new LinearLayout.LayoutParams(-1,-2));
         Button activate=new Button(this); activate.setText(prefs.getBoolean("active",false)?"STOP FASTLOCK":"ACTIVATE FASTLOCK"); activate.setOnClickListener(v->toggleFastLock()); root.addView(activate,new LinearLayout.LayoutParams(-1,-2));
@@ -118,7 +125,7 @@ public class MainActivity extends Activity {
             buildUi();
             return;
         }
-        if(!prefs.contains("passcode_hash")){Toast.makeText(this,"Set your FastLock PIN first.",Toast.LENGTH_LONG).show();return;}
+        if(!hasFastLockPin()){Toast.makeText(this,"Set your FastLock PIN first.",Toast.LENGTH_LONG).show();return;}
         if(!prefs.getBoolean("fast_fingerprint_enabled",false)){Toast.makeText(this,"Set up at least one FastLock fingerprint first.",Toast.LENGTH_LONG).show();return;}
         if(!Settings.canDrawOverlays(this)){startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())),OVERLAY_REQ);return;}
         setActive(true);
@@ -137,25 +144,6 @@ public class MainActivity extends Activity {
         i.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN,admin);
         i.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,"FastLock uses Android device policy for its optional Lock Task security mode.");
         startActivityForResult(i,4301);
-    }
-
-    private void showPasscodeDialog(){
-        final EditText input=new EditText(this); input.setHint("4–12 digit FastLock PIN"); input.setInputType(2); input.setTextColor(0xFFFFFFFF); input.setHintTextColor(0xFF777D88);
-        new AlertDialog.Builder(this).setTitle("Create FastLock PIN").setMessage("This PIN belongs only to FastLockApp.").setView(input).setNegativeButton("Cancel",null).setPositiveButton("Save",(d,w)->{
-            String value=input.getText().toString();
-            if(value.length()<4||value.length()>12){Toast.makeText(this,"Use 4–12 digits",Toast.LENGTH_SHORT).show();return;}
-            String salt=java.util.UUID.randomUUID().toString();
-            prefs.edit().putString("passcode_salt",salt).putString("passcode_hash",hash(value,salt)).apply();
-            Toast.makeText(this,"FastLock PIN saved",Toast.LENGTH_SHORT).show();buildUi();
-        }).show();
-    }
-
-    private String hash(String value,String salt){
-        try{
-            javax.crypto.spec.PBEKeySpec spec=new javax.crypto.spec.PBEKeySpec(value.toCharArray(),salt.getBytes(java.nio.charset.StandardCharsets.UTF_8),120000,256);
-            byte[] out=javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded();
-            return android.util.Base64.encodeToString(out,android.util.Base64.NO_WRAP);
-        }catch(Exception e){throw new IllegalStateException(e);}
     }
 
     private void startLayer(){
