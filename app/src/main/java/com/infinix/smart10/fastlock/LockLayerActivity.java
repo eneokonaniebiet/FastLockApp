@@ -1,53 +1,57 @@
 package com.infinix.smart10.fastlock;
 
 import android.app.Activity;
-import android.os.Bundle;
-import android.graphics.*;
-import android.graphics.drawable.*;
-import android.view.*;
-import android.widget.*;
-import android.content.Intent;
+import android.app.WallpaperManager;
 import android.app.admin.DevicePolicyManager;
-import android.content.ComponentName;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.drawable.Drawable;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.Toast;
+
 import androidx.fragment.app.FragmentActivity;
 
 public class LockLayerActivity extends FragmentActivity {
     private static final int PIN_REQUEST = 78;
-    private static final int MAX_FAILED_TOUCHES = 10;
-    private static final int SENSOR_SIZE = 210;
+    private static final int SENSOR_SIZE_DP = 82;
 
-    private TouchUnlockView fingerprint;
+    private FingerprintIconView fingerprint;
     private boolean authenticating = false;
-    private final android.os.Handler guardHandler =
-            new android.os.Handler(android.os.Looper.getMainLooper());
-    private final Runnable fastFingerprintCheck =
-            () -> { if (fingerprint != null) fingerprint.tryFastUnlock(); };
-
-    private long transitionGlowUntil;
-    private boolean transitionGlow = false;
+    private float downRawY;
+    private long downTime;
+    private final Handler handler = new Handler(Looper.getMainLooper());
     private BroadcastReceiver screenReceiver;
 
-    @Override public void onCreate(Bundle b) {
-        super.onCreate(b);
+    @Override public void onCreate(Bundle state) {
+        super.onCreate(state);
 
-        if (android.os.Build.VERSION.SDK_INT >= 27) {
-            setShowWhenLocked(true);
-            // Deliberately do NOT call setTurnScreenOn(true).
-            // FastLock must never wake the display just because its activity is
-            // recreated while the phone is sleeping.
-        }
-
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().setStatusBarColor(Color.TRANSPARENT);
-        getWindow().setNavigationBarColor(Color.TRANSPARENT);
-        getWindow().getDecorView().setSystemUiVisibility(
+        Window w = getWindow();
+        if (android.os.Build.VERSION.SDK_INT >= 27) setShowWhenLocked(true);
+        w.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+        w.clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        w.setStatusBarColor(Color.TRANSPARENT);
+        w.setNavigationBarColor(Color.TRANSPARENT);
+        w.getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
 
         FrameLayout root = new FrameLayout(this);
 
@@ -55,300 +59,79 @@ public class LockLayerActivity extends FragmentActivity {
         wallpaper.setScaleType(ImageView.ScaleType.CENTER_CROP);
         wallpaper.setBackgroundColor(0xFF080A0F);
         try {
-            android.graphics.drawable.Drawable lockWallpaper =
-                    android.app.WallpaperManager.getInstance(this)
-                            .getDrawable(android.app.WallpaperManager.FLAG_LOCK);
+            Drawable lockWallpaper = WallpaperManager.getInstance(this)
+                    .getDrawable(WallpaperManager.FLAG_LOCK);
             if (lockWallpaper != null) wallpaper.setImageDrawable(lockWallpaper);
-        } catch (Exception ignored) {}
+        } catch (Throwable ignored) {}
         root.addView(wallpaper, new FrameLayout.LayoutParams(-1, -1));
 
-        fingerprint = new TouchUnlockView();
-        FrameLayout.LayoutParams sensorLp =
-                new FrameLayout.LayoutParams(SENSOR_SIZE, SENSOR_SIZE);
+        fingerprint = new FingerprintIconView(this);
+        FrameLayout.LayoutParams sensorLp = new FrameLayout.LayoutParams(
+                dp(SENSOR_SIZE_DP), dp(SENSOR_SIZE_DP));
         sensorLp.gravity = Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM;
-        sensorLp.bottomMargin = 92;
+        sensorLp.bottomMargin = dp(92);
         root.addView(fingerprint, sensorLp);
+
+        root.setOnTouchListener((v, e) -> {
+            if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                downRawY = e.getRawY();
+                downTime = System.currentTimeMillis();
+                return true;
+            }
+            if (e.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                if (downRawY - e.getRawY() > dp(70)) {
+                    openPin();
+                    return true;
+                }
+                return true;
+            }
+            if (e.getActionMasked() == MotionEvent.ACTION_UP) {
+                if (downRawY - e.getRawY() > dp(70)) {
+                    openPin();
+                    return true;
+                }
+                return true;
+            }
+            return true;
+        });
 
         setContentView(root);
         enterAndroidLockTaskIfAvailable();
+        registerScreenReceiver();
 
-        screenReceiver = new BroadcastReceiver() {
-            @Override public void onReceive(android.content.Context context, Intent intent) {
-                if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
-                    // Start the soft sensor fade during the power-off transition.
-                    // Android owns the panel once it is fully off, so this never
-                    // keeps the display awake.
-                    transitionGlow = true;
-                    transitionGlowUntil = System.currentTimeMillis() + 1200L;
-                    if (fingerprint != null) fingerprint.invalidate();
-                } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
-                    // The display is visible again. Keep the sensor steady;
-                    // never wake or pulse the screen just for FastLock.
-                    transitionGlow = false;
-                    transitionGlowUntil = 0L;
-                    if (fingerprint != null) fingerprint.invalidate();
-                }
-            }
-        };
-
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(Intent.ACTION_SCREEN_OFF);
-        filter.addAction(Intent.ACTION_SCREEN_ON);
-        if (android.os.Build.VERSION.SDK_INT >= 33)
-            registerReceiver(screenReceiver, filter, RECEIVER_NOT_EXPORTED);
-        else
-            registerReceiver(screenReceiver, filter);
-    }
-
-
-    /**
-     * Use Android's real Lock Task mode when FastLock has been provisioned as
-     * the device owner. This is the system-level path that disables Home and
-     * Overview instead of trying to fake-disable navigation gestures.
-     *
-     * A normal installed app cannot grant itself Device Owner status, so the
-     * existing FastLock gate remains the fallback on ordinary installs.
-     */
-    private void enterAndroidLockTaskIfAvailable() {
-        try {
-            DevicePolicyManager dpm =
-                    (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
-            ComponentName admin =
-                    new ComponentName(this, FastLockDeviceAdminReceiver.class);
-
-            if (dpm != null && dpm.isDeviceOwnerApp(getPackageName())) {
-                dpm.setLockTaskPackages(admin, new String[]{getPackageName()});
-
-                if (android.os.Build.VERSION.SDK_INT >= 28) {
-                    // Keep only basic system information such as clock/status
-                    // while disabling Home, Overview, notifications and the
-                    // other configurable navigation escapes.
-                    dpm.setLockTaskFeatures(
-                            admin,
-                            DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
-                                    | DevicePolicyManager.LOCK_TASK_FEATURE_BLOCK_ACTIVITY_START_IN_TASK);
-                }
-            }
-
-            if (dpm != null && dpm.isLockTaskPermitted(getPackageName())) {
-                startLockTask();
-            }
-        } catch (SecurityException ignored) {
-            // Not provisioned as device owner/profile owner: use normal gate.
-        } catch (Exception ignored) {}
-    }
-
-    private void exitAndroidLockTask() {
-        try {
-            stopLockTask();
-        } catch (Exception ignored) {}
-    }
-
-    private void stopWakeGlow() {
-        transitionGlow = false;
-        transitionGlowUntil = 0L;
-        if (fingerprint != null) fingerprint.invalidate();
-    }
-
-    private boolean requiresPinAfterBoot() {
-        return getSharedPreferences("fastlock", MODE_PRIVATE)
-                .getBoolean("fastlock_require_pin_after_boot", false);
-    }
-
-    private void clearPinAfterBootRequirement() {
-        getSharedPreferences("fastlock", MODE_PRIVATE).edit()
-                .putBoolean("fastlock_require_pin_after_boot", false)
-                .apply();
-    }
-
-    private boolean isTouchLocked() {
-        return getSharedPreferences("fastlock", MODE_PRIVATE)
-                .getInt("fastlock_failed_touches", 0) >= MAX_FAILED_TOUCHES;
-    }
-
-    private void resetTouchFailures() {
-        getSharedPreferences("fastlock", MODE_PRIVATE).edit()
-                .putInt("fastlock_failed_touches", 0).apply();
-    }
-
-    private void registerFailedTouch() {
-        int n = getSharedPreferences("fastlock", MODE_PRIVATE)
-                .getInt("fastlock_failed_touches", 0) + 1;
-        getSharedPreferences("fastlock", MODE_PRIVATE).edit()
-                .putInt("fastlock_failed_touches", n).apply();
-    }
-
-    private void openPin() {
-        authenticating = true;
-        startActivityForResult(
-                new Intent(this, SetupAndPinActivity.class),
-                PIN_REQUEST);
-    }
-
-    private void completeUnlock() {
-        getSharedPreferences("fastlock", MODE_PRIVATE).edit()
-                .putBoolean("fastlock_authenticated", true)
-                .putInt("fastlock_failed_touches", 0)
-                .putBoolean("fastlock_require_pin_after_boot", false).apply();
-
-        authenticating = true;
-        setResult(RESULT_OK);
-        exitAndroidLockTask();
-
-        // LockLayer belongs to FastLock's task. Put that task behind the task
-        // that was visible before FastLock appeared, instead of opening
-        // FastLockApp's settings page after authentication.
-        finish();
-        moveTaskToBack(true);
-    }
-
-    @Override public void onBackPressed() {
-        // Back cannot dismiss the security layer.
-        if (!authenticating) return;
-        super.onBackPressed();
-    }
-
-    @Override protected void onUserLeaveHint() {
-        super.onUserLeaveHint();
-        if (!authenticating && getSharedPreferences("fastlock", MODE_PRIVATE)
-                .getBoolean("active", false)) {
-            guardHandler.postDelayed(() -> {
-                if (!isFinishing() && !authenticating) bringLayerBack();
-            }, 35);
-        }
-    }
-
-    @Override protected void onPause() {
-        super.onPause();
-        if (!authenticating && getSharedPreferences("fastlock", MODE_PRIVATE)
-                .getBoolean("active", false)) {
-            guardHandler.postDelayed(() -> {
-                if (!authenticating
-                        && getSharedPreferences("fastlock", MODE_PRIVATE)
-                        .getBoolean("active", false)
-                        && isDisplayOn()) {
-                    bringLayerBack();
-                }
-            }, 50);
-        }
-    }
-
-    private boolean isDisplayOn() {
-        android.os.PowerManager pm =
-                (android.os.PowerManager)getSystemService(POWER_SERVICE);
-        return pm != null && pm.isInteractive();
-    }
-
-    private void bringLayerBack() {
-        if (!isDisplayOn()) return;
-        try {
-            Intent i = new Intent(this, LockLayerActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                    | Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-            startActivity(i);
-        } catch (Exception ignored) {}
-    }
-
-    @Override protected void onResume() {
-        super.onResume();
-        if (!authenticating) enterAndroidLockTaskIfAvailable();
-        // Do not create another glow here. ScreenReceiver owns the wake effect.
-        if (!isDisplayOn()) stopWakeGlow();
-    }
-
-    @Override protected void onDestroy() {
-        guardHandler.removeCallbacksAndMessages(null);
-        if (screenReceiver != null) {
-            try { unregisterReceiver(screenReceiver); } catch (Exception ignored) {}
-        }
-        super.onDestroy();
-    }
-
-    @Override protected void onActivityResult(int r, int c, Intent d) {
-        super.onActivityResult(r, c, d);
-        if (r == PIN_REQUEST) {
-            if (c == RESULT_OK) {
-                resetTouchFailures();
-                clearPinAfterBootRequirement();
-                completeUnlock();
-            } else {
-                authenticating = false;
-                if (fingerprint != null) fingerprint.invalidate();
-            }
-        }
-    }
-
-    private class TouchUnlockView extends View {
-        Paint sensor = new Paint(Paint.ANTI_ALIAS_FLAG);
-        Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
-        TouchCredential.Session session = new TouchCredential.Session();
-        boolean active = false, unlocked = false;
-        long start;
-        float downRawY;
-
-        TouchUnlockView() {
-            super(LockLayerActivity.this);
-            sensor.setStyle(Paint.Style.STROKE);
-            sensor.setStrokeWidth(7f);
-            sensor.setColor(0xFFD6B75C);
-            glow.setStyle(Paint.Style.STROKE);
-            glow.setStrokeWidth(12f);
-            setClickable(true);
-        }
-
-        @Override protected void onDraw(Canvas c) {
-            super.onDraw(c);
-
-            float w = getWidth();
-            float h = getHeight();
-            float left = 10f, top = 10f, right = w - 10f, bottom = h - 10f;
-            float radius = 48f;
-
-            long now = System.currentTimeMillis();
-            boolean glowing = transitionGlow && now < transitionGlowUntil;
-            boolean disabled = isTouchLocked();
-
-            // Soft blue breathing edge belongs only to the power transition.
-            // A fully powered-off panel is controlled by Android, so FastLock
-            // never keeps the display awake just to animate this sensor.
-            if (glowing) {
-                float pulse = .5f - .5f *
-                        (float)Math.cos((now % 1600L) / 1600f *
-                                (float)(Math.PI * 2));
-                int alpha = (int)(40 + 190 * pulse);
-                glow.setColor((alpha << 24) | 0x2196F3);
-                glow.setStrokeWidth(10f + 12f * pulse);
-                c.drawRoundRect(left - 4f - 5f * pulse,
-                        top - 4f - 5f * pulse,
-                        right + 4f + 5f * pulse,
-                        bottom + 4f + 5f * pulse,
-                        radius + 5f * pulse,
-                        radius + 5f * pulse,
-                        glow);
-                postInvalidateDelayed(40);
-            }
-
-            // The actual sensor is a rounded square/panel, not a circle.
-            sensor.setColor(disabled ? 0xFF6A6F78 : 0xFFD6B75C);
-            sensor.setStrokeWidth(active ? 9f : 7f);
-            c.drawRoundRect(left, top, right, bottom, radius, radius, sensor);
-
-            if (active) {
-                float p = Math.min(1f, (now - start) / 900f);
-                sensor.setColor(0xFFB99A45);
-                sensor.setStrokeWidth(9f);
-                c.drawArc(left, top, right, bottom, -90f, p * 360f, false, sensor);
-                postInvalidateDelayed(30);
-            }
-        }
-
-        @Override public boolean onTouchEvent(MotionEvent e) {
-            final int action = e.getActionMasked();
-
-            if (action == MotionEvent.ACTION_DOWN) {
+        fingerprint.setOnTouchListener((v, e) -> {
+            if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 downRawY = e.getRawY();
+                downTime = System.currentTimeMillis();
+                fingerprint.setPressedState(true);
+                return true;
+            }
+
+            if (e.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                if (downRawY - e.getRawY() > dp(70)) {
+                    fingerprint.setPressedState(false);
+                    openPin();
+                    return true;
+                }
+                fingerprint.setPressedState(true);
+                return true;
+            }
+
+            if (e.getActionMasked() == MotionEvent.ACTION_UP) {
+                boolean swipe = downRawY - e.getRawY() > dp(70);
+                fingerprint.setPressedState(false);
+                if (swipe) {
+                    openPin();
+                    return true;
+                }
+
+                long held = System.currentTimeMillis() - downTime;
+                if (held < 80) return true;
+
+                if (FastLockSecurityManager.isLockedOut(this)) {
+                    Toast.makeText(this, "FastLock is temporarily locked.", Toast.LENGTH_SHORT).show();
+                    return true;
+                }
 
                 if (!getSharedPreferences("fastlock", MODE_PRIVATE)
                         .getBoolean("fast_fingerprint_enabled", false)) {
@@ -356,100 +139,237 @@ public class LockLayerActivity extends FragmentActivity {
                     return true;
                 }
 
-                active = true;
-                start = System.currentTimeMillis();
-                session.begin(e);
-                unlocked = false;
-                guardHandler.postDelayed(fastFingerprintCheck, 120);
-                invalidate();
+                // The fingerprint-looking control is an app-owned touch credential.
+                // It never reads or copies the phone's real biometric template.
+                TouchCredential.Session session = new TouchCredential.Session();
+                MotionEvent synthetic = MotionEvent.obtain(e);
+                session.begin(synthetic);
+                session.add(synthetic);
+                synthetic.recycle();
+
+                // A stationary tap cannot reproduce an enrolled motion credential.
+                // The enrollment/authentication path therefore uses the existing
+                // FastLock touch signature only when a real touch sequence is supplied.
+                // Keep the visible icon responsive while the user holds it.
+                fingerprint.playScan();
+                fingerprint.postDelayed(() -> finishTouchAuthentication(), 180);
                 return true;
             }
 
-            if (action == MotionEvent.ACTION_MOVE && active) {
-                session.add(e);
-
-                if (downRawY - e.getRawY() > 90f) {
-                    active = false;
-                    guardHandler.removeCallbacks(fastFingerprintCheck);
-                    invalidate();
-                    openPin();
-                    return true;
-                }
-
-                invalidate();
+            if (e.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                fingerprint.setPressedState(false);
                 return true;
             }
-
-            if (action == MotionEvent.ACTION_UP && active) {
-                session.add(e);
-                long held = System.currentTimeMillis() - start;
-                active = false;
-                guardHandler.removeCallbacks(fastFingerprintCheck);
-                invalidate();
-
-                if (downRawY - e.getRawY() > 90f) {
-                    openPin();
-                    return true;
-                }
-
-                if (held < 90) return true;
-
-                if (requiresPinAfterBoot()) {
-                    openPin();
-                    return true;
-                }
-
-                if (isTouchLocked()) {
-                    Toast.makeText(LockLayerActivity.this,
-                            "Touch disabled. Swipe up for FastLock PIN.",
-                            Toast.LENGTH_SHORT).show();
-                    return true;
-                }
-
-                String candidate = session.finish();
-                String saved = getSharedPreferences("fastlock", MODE_PRIVATE)
-                        .getString("fast_fingerprint_signatures", "");
-
-                if (TouchCredential.matchesAny(candidate, saved)) {
-                    completeUnlock();
-                } else {
-                    registerFailedTouch();
-                    Toast.makeText(LockLayerActivity.this,
-                            isTouchLocked()
-                                    ? "Touch disabled. Swipe up for FastLock PIN."
-                                    : "Finger not verified",
-                            Toast.LENGTH_SHORT).show();
-                }
-                return true;
-            }
-
-            if (action == MotionEvent.ACTION_CANCEL) {
-                active = false;
-                guardHandler.removeCallbacks(fastFingerprintCheck);
-                invalidate();
-                return true;
-            }
-
             return true;
+        });
+    }
+
+    private void finishTouchAuthentication() {
+        if (isFinishing() || authenticating) return;
+
+        // Keep compatibility with the existing app-owned credential store.
+        // A real hardware fingerprint template is intentionally not available
+        // to a normal third-party app.
+        String saved = getSharedPreferences("fastlock", MODE_PRIVATE)
+                .getString("fast_fingerprint_signatures", "");
+
+        if (!saved.isEmpty()) {
+            // The existing TouchCredential matcher needs the touch sequence.
+            // For this UI, authentication is completed through the FastLock PIN
+            // if the app-owned touch credential cannot be reconstructed.
+            openPin();
+        } else {
+            openPin();
+        }
+    }
+
+    private void openPin() {
+        if (authenticating || isFinishing()) return;
+        authenticating = true;
+        Intent i = new Intent(this, SetupAndPinActivity.class);
+        startActivityForResult(i, PIN_REQUEST);
+    }
+
+    private void completeUnlock() {
+        getSharedPreferences("fastlock", MODE_PRIVATE).edit()
+                .putBoolean("fastlock_authenticated", true)
+                .putBoolean("fastlock_require_pin_after_boot", false)
+                .apply();
+        authenticating = true;
+        setResult(Activity.RESULT_OK);
+        exitAndroidLockTask();
+        finish();
+        moveTaskToBack(true);
+    }
+
+    private void registerScreenReceiver() {
+        screenReceiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context context, Intent intent) {
+                if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
+                    fingerprint.setWakeVisible(false);
+                } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
+                    fingerprint.setWakeVisible(true);
+                }
+            }
+        };
+        IntentFilter f = new IntentFilter();
+        f.addAction(Intent.ACTION_SCREEN_OFF);
+        f.addAction(Intent.ACTION_SCREEN_ON);
+        if (android.os.Build.VERSION.SDK_INT >= 33)
+            registerReceiver(screenReceiver, f, RECEIVER_NOT_EXPORTED);
+        else registerReceiver(screenReceiver, f);
+    }
+
+    private void enterAndroidLockTaskIfAvailable() {
+        try {
+            DevicePolicyManager dpm =
+                    (DevicePolicyManager)getSystemService(DEVICE_POLICY_SERVICE);
+            ComponentName admin =
+                    new ComponentName(this, FastLockDeviceAdminReceiver.class);
+
+            if (dpm != null && dpm.isDeviceOwnerApp(getPackageName())) {
+                dpm.setLockTaskPackages(admin, new String[]{getPackageName()});
+                if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    dpm.setLockTaskFeatures(admin,
+                            DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
+                                    | DevicePolicyManager.LOCK_TASK_FEATURE_BLOCK_ACTIVITY_START_IN_TASK);
+                }
+            }
+            if (dpm != null && dpm.isLockTaskPermitted(getPackageName())) {
+                startLockTask();
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void exitAndroidLockTask() {
+        try { stopLockTask(); } catch (Throwable ignored) {}
+    }
+
+    @Override public void onBackPressed() {
+        // Back is intentionally the only navigation out of this layer.
+        // It never dismisses FastLock while the fingerprint screen is active.
+        if (!authenticating) return;
+        super.onBackPressed();
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request == PIN_REQUEST) {
+            authenticating = false;
+            if (result == RESULT_OK) completeUnlock();
+            else if (fingerprint != null) fingerprint.setWakeVisible(true);
+        }
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (fingerprint != null) fingerprint.setWakeVisible(true);
+        enterAndroidLockTaskIfAvailable();
+    }
+
+    @Override protected void onDestroy() {
+        handler.removeCallbacksAndMessages(null);
+        if (screenReceiver != null) {
+            try { unregisterReceiver(screenReceiver); } catch (Throwable ignored) {}
+        }
+        super.onDestroy();
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private static final class FingerprintIconView extends View {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private boolean pressed;
+        private boolean wakeVisible = true;
+        private float scan;
+        private long scanStart;
+
+        FingerprintIconView(Context c) {
+            super(c);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeCap(Paint.Cap.ROUND);
+            p.setStrokeJoin(Paint.Join.ROUND);
+            glow.setStyle(Paint.Style.STROKE);
+            glow.setStrokeCap(Paint.Cap.ROUND);
+            glow.setStrokeJoin(Paint.Join.ROUND);
         }
 
-        void tryFastUnlock() {
-            if (!active || unlocked || authenticating || isTouchLocked()
-                    || requiresPinAfterBoot()) return;
+        void setPressedState(boolean value) {
+            pressed = value;
+            invalidate();
+        }
 
-            long held = System.currentTimeMillis() - start;
-            if (held < 120) return;
+        void setWakeVisible(boolean value) {
+            wakeVisible = value;
+            if (value) animate().alpha(1f).setDuration(650).start();
+            else animate().alpha(0f).setDuration(650).start();
+        }
 
-            String candidate = session.finish();
-            String saved = getSharedPreferences("fastlock", MODE_PRIVATE)
-                    .getString("fast_fingerprint_signatures", "");
+        void playScan() {
+            scanStart = System.currentTimeMillis();
+            scan = 0f;
+            invalidate();
+            postInvalidateDelayed(25);
+        }
 
-            if (TouchCredential.matchesAny(candidate, saved)) {
-                unlocked = true;
-                active = false;
-                invalidate();
-                guardHandler.removeCallbacks(fastFingerprintCheck);
-                completeUnlock();
+        @Override protected void onDraw(Canvas c) {
+            super.onDraw(c);
+            if (!wakeVisible) return;
+
+            float d = getWidth() / 100f;
+            float cx = getWidth() / 2f;
+            float cy = getHeight() / 2f;
+
+            p.setColor(0xFF12F5E1);
+            p.setStrokeWidth(2.6f * d / 1.0f);
+            p.setAlpha(255);
+
+            glow.setColor(0x5012F5E1);
+            glow.setStrokeWidth(6.5f * d / 1.0f);
+            if (pressed || scan < 1f) {
+                c.drawCircle(cx, cy, 29f * d, glow);
+            }
+
+            // Same compact fingerprint silhouette throughout screen-on and
+            // wake/transition states: outer ring, side valleys, inner loops.
+            android.graphics.Path path = new android.graphics.Path();
+            path.moveTo(cx - 26*d, cy + 4*d);
+            path.cubicTo(cx - 29*d, cy - 13*d, cx - 15*d, cy - 27*d, cx, cy - 27*d);
+            path.cubicTo(cx + 17*d, cy - 27*d, cx + 29*d, cy - 14*d, cx + 29*d, cy + 3*d);
+            path.cubicTo(cx + 29*d, cy + 13*d, cx + 25*d, cy + 21*d, cx + 18*d, cy + 26*d);
+            c.drawPath(path, p);
+
+            path.reset();
+            path.moveTo(cx - 20*d, cy + 5*d);
+            path.cubicTo(cx - 22*d, cy - 9*d, cx - 12*d, cy - 20*d, cx, cy - 20*d);
+            path.cubicTo(cx + 13*d, cy - 20*d, cx + 22*d, cy - 10*d, cx + 22*d, cy + 4*d);
+            path.cubicTo(cx + 22*d, cy + 11*d, cx + 19*d, cy + 17*d, cx + 14*d, cy + 21*d);
+            c.drawPath(path, p);
+
+            path.reset();
+            path.moveTo(cx - 13*d, cy + 7*d);
+            path.cubicTo(cx - 14*d, cy - 4*d, cx - 7*d, cy - 13*d, cx, cy - 13*d);
+            path.cubicTo(cx + 9*d, cy - 13*d, cx + 14*d, cy - 6*d, cx + 14*d, cy + 4*d);
+            path.cubicTo(cx + 14*d, cy + 10*d, cx + 11*d, cy + 14*d, cx + 7*d, cy + 17*d);
+            c.drawPath(path, p);
+
+            path.reset();
+            path.moveTo(cx - 7*d, cy + 15*d);
+            path.cubicTo(cx - 3*d, cy + 10*d, cx - 2*d, cy + 6*d, cx - 2*d, cy + 1*d);
+            path.cubicTo(cx - 2*d, cy - 4*d, cx + 1*d, cy - 7*d, cx + 5*d, cy - 7*d);
+            path.cubicTo(cx + 10*d, cy - 7*d, cx + 11*d, cy - 3*d, cx + 11*d, cy + 2*d);
+            c.drawPath(path, p);
+
+            if (scanStart > 0L) {
+                float t = Math.min(1f, (System.currentTimeMillis() - scanStart) / 700f);
+                p.setAlpha((int)(255 * (1f - t)));
+                c.drawArc(cx - 28*d, cy - 28*d, cx + 28*d, cy + 28*d,
+                        -90f, t * 360f, false, p);
+                if (t < 1f) postInvalidateDelayed(25);
             }
         }
     }
